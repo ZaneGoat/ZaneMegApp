@@ -1,0 +1,6 @@
+/target
+venv/
+*.swp
+.*.swp
+*.kate-swp
+.*.kate-swp
