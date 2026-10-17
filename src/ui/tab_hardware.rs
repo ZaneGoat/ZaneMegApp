@@ -4,11 +4,13 @@ use std::collections::VecDeque;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread;
 
-use crate::core::hardware::{HardwareManager, HardwareTelemetry};
+use crate::core::hardware::{CpuTimes, HardwareManager, HardwareTelemetry};
 use crate::theme::*;
 
 pub struct TabHardware {
     pub telemetry: HardwareTelemetry,
+    pub prev_cpu_overall: CpuTimes,
+    pub prev_cpu_cores: Vec<CpuTimes>,
     pub cpu_history: VecDeque<[f64; 2]>,
     pub gpu_history: VecDeque<[f64; 2]>,
     pub nvme_history: VecDeque<[f64; 2]>,
@@ -25,8 +27,11 @@ pub struct TabHardware {
 impl TabHardware {
     pub fn new() -> Self {
         let (tx, rx) = channel();
+        let (prev_cpu_overall, prev_cpu_cores) = HardwareManager::read_cpu_times();
         Self {
             telemetry: HardwareTelemetry::default(),
+            prev_cpu_overall,
+            prev_cpu_cores,
             cpu_history: VecDeque::with_capacity(60),
             gpu_history: VecDeque::with_capacity(60),
             nvme_history: VecDeque::with_capacity(60),
@@ -42,7 +47,10 @@ impl TabHardware {
     }
 
     pub fn update_telemetry(&mut self) {
-        self.telemetry = HardwareManager::read_telemetry();
+        self.telemetry = HardwareManager::read_telemetry(
+            &mut self.prev_cpu_overall,
+            &mut self.prev_cpu_cores,
+        );
         self.step_counter += 1;
 
         let x = self.step_counter as f64;
@@ -89,8 +97,28 @@ impl TabHardware {
 
         ui.add_space(4.0);
 
-        // 1. Top 4-Column Telemetry Tiles
+        // 1. Top 4-Column Radial Cockpit Arc Dials
         ui.columns(4, |cols| {
+            // Dial 1: CPU Load %
+            let load_frac = self.telemetry.cpu_load_pct / 100.0;
+            let load_color = if self.telemetry.cpu_load_pct >= 80.0 {
+                RED_BRIGHT
+            } else if self.telemetry.cpu_load_pct >= 45.0 {
+                AMBER_WARN
+            } else {
+                CYAN_INFO
+            };
+            radial_dial(
+                &mut cols[0],
+                "CPU UTILIZATION",
+                &format!("{:.0}%", self.telemetry.cpu_load_pct),
+                &format!("{:.2} GHz • {}", self.telemetry.cpu_freq_ghz, self.telemetry.cpu_governor),
+                load_frac,
+                load_color,
+            );
+
+            // Dial 2: CPU Package Temp
+            let cpu_t_frac = ((self.telemetry.cpu_temp - 25.0) / 75.0).clamp(0.0, 1.0);
             let cpu_color = if self.telemetry.cpu_temp >= 80.0 {
                 RED_BRIGHT
             } else if self.telemetry.cpu_temp >= 65.0 {
@@ -98,47 +126,79 @@ impl TabHardware {
             } else {
                 GREEN_OK
             };
-            metric_tile(
-                &mut cols[0],
-                "CPU PACKAGE",
+            radial_dial(
+                &mut cols[1],
+                "CPU PACKAGE TEMP",
                 &format!("{:.0}°C", self.telemetry.cpu_temp),
-                &format!("{:.2} GHz • {}", self.telemetry.cpu_freq_ghz, self.telemetry.cpu_governor),
+                &format!("NVMe SSD: {:.0}°C", self.telemetry.nvme_temp),
+                cpu_t_frac,
                 cpu_color,
             );
 
-            metric_tile(
-                &mut cols[1],
-                "GPU / PCH ZONE",
+            // Dial 3: GPU / Thermal Zone
+            let gpu_t_frac = ((self.telemetry.gpu_temp - 25.0) / 75.0).clamp(0.0, 1.0);
+            radial_dial(
+                &mut cols[2],
+                "GPU / PCH THERMAL",
                 &format!("{:.0}°C", self.telemetry.gpu_temp),
                 if self.cooler_boost { "FAN: MAX BOOST" } else { "FAN: EC AUTO" },
+                gpu_t_frac,
                 RED_PRIMARY,
             );
 
-            metric_tile(
-                &mut cols[2],
-                "NVMe COMPOSITE",
-                &format!("{:.0}°C", self.telemetry.nvme_temp),
-                "PCIe Gen3 x4 SSD",
-                CYAN_INFO,
-            );
-
+            // Dial 4: Battery Cell
+            let bat_frac = self.telemetry.battery_pct as f32 / 100.0;
             let bat_color = if self.telemetry.battery_pct <= 20 {
                 RED_BRIGHT
             } else {
                 GREEN_OK
             };
-            metric_tile(
+            radial_dial(
                 &mut cols[3],
                 "BATTERY CELL",
                 &format!("{}%", self.telemetry.battery_pct),
                 &format!("{} (Cap {}%)", self.telemetry.battery_status, self.battery_limit),
+                bat_frac,
                 bat_color,
             );
         });
 
-        ui.add_space(8.0);
+        ui.add_space(6.0);
 
-        // 2. Realtime Thermal Waveform Plot Card
+        // 2. 12-Thread Per-Core Utilization Matrix Strip (Intel i5-10500H)
+        cyber_card(
+            ui,
+            "12-THREAD CORE MATRIX",
+            Some("INTEL CORE i5-10500H PER-THREAD TELEMETRY"),
+            CYAN_INFO,
+            Some((
+                &format!("UPTIME: {}", self.telemetry.uptime_formatted),
+                CYAN_INFO,
+                CYAN_SUBTLE,
+            )),
+            |ui| {
+                let n = self.telemetry.core_loads.len().min(12);
+                if n >= 6 {
+                    ui.columns(6, |cols| {
+                        for i in 0..6 {
+                            mini_core_bar(&mut cols[i], i, self.telemetry.core_loads[i]);
+                        }
+                    });
+                    if n >= 12 {
+                        ui.add_space(3.0);
+                        ui.columns(6, |cols| {
+                            for i in 6..12 {
+                                mini_core_bar(&mut cols[i - 6], i, self.telemetry.core_loads[i]);
+                            }
+                        });
+                    }
+                }
+            },
+        );
+
+        ui.add_space(6.0);
+
+        // 3. Realtime Thermal Waveform Plot Card
         let thermal_badge = if self.telemetry.cpu_temp >= 80.0 {
             ("🔥 HIGH THERMAL LOAD", RED_BRIGHT, RED_SUBTLE)
         } else {
@@ -158,7 +218,7 @@ impl TabHardware {
 
                 let plot = Plot::new("thermal_plot")
                     .legend(Legend::default())
-                    .height(165.0)
+                    .height(145.0)
                     .include_y(25.0)
                     .include_y(95.0)
                     .show_axes([false, true])
@@ -186,9 +246,9 @@ impl TabHardware {
             },
         );
 
-        ui.add_space(8.0);
+        ui.add_space(6.0);
 
-        // 3. Power Profiles Deck
+        // 4. Power Profiles Deck
         let active_badge = format!("ACTIVE: {}", self.active_profile.to_uppercase());
         cyber_card(
             ui,
@@ -222,7 +282,7 @@ impl TabHardware {
                         )
                         .fill(fill)
                         .stroke(stroke)
-                        .min_size(egui::vec2(cols[idx].available_width(), 48.0));
+                        .min_size(egui::vec2(cols[idx].available_width(), 46.0));
 
                         if cols[idx].add(btn).clicked() {
                             self.active_profile = (*id).to_string();
@@ -239,9 +299,9 @@ impl TabHardware {
             },
         );
 
-        ui.add_space(8.0);
+        ui.add_space(6.0);
 
-        // 4. Dual Bottom Cards: Fan Controls & Battery Health Cap
+        // 5. Dual Bottom Cards: Fan Controls & Battery Health Cap
         ui.columns(2, |cols| {
             // Left: Fan Controls
             let boost_badge = if self.cooler_boost {

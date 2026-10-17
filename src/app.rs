@@ -117,8 +117,9 @@ impl eframe::App for ZaneMegApp {
                         };
                         status_pill(ui, &format!("RAM: {:.0}%", ram_pct), ram_fg, ram_bg);
 
-                        // CPU Temp Pill
+                        // CPU Temp & Load Pill
                         let cpu_t = self.tab_hardware.telemetry.cpu_temp;
+                        let cpu_load = self.tab_hardware.telemetry.cpu_load_pct;
                         let (cpu_fg, cpu_bg) = if cpu_t >= 80.0 {
                             (RED_BRIGHT, RED_SUBTLE)
                         } else if cpu_t >= 65.0 {
@@ -126,10 +127,32 @@ impl eframe::App for ZaneMegApp {
                         } else {
                             (GREEN_OK, GREEN_SUBTLE)
                         };
-                        status_pill(ui, &format!("CPU: {:.0}°C", cpu_t), cpu_fg, cpu_bg);
+                        status_pill(
+                            ui,
+                            &format!("CPU: {:.0}°C ({:.0}%)", cpu_t, cpu_load),
+                            cpu_fg,
+                            cpu_bg,
+                        );
                     });
                 });
             });
+
+        // Flight Deck Keyboard Shortcuts (F1 - F6)
+        ui.input(|i| {
+            if i.key_pressed(egui::Key::F1) {
+                self.current_tab = AppTab::Hardware;
+            } else if i.key_pressed(egui::Key::F2) {
+                self.current_tab = AppTab::Controller;
+            } else if i.key_pressed(egui::Key::F3) {
+                self.current_tab = AppTab::Cleaner;
+            } else if i.key_pressed(egui::Key::F4) {
+                self.current_tab = AppTab::Headset;
+            } else if i.key_pressed(egui::Key::F5) {
+                self.current_tab = AppTab::Security;
+            } else if i.key_pressed(egui::Key::F6) {
+                self.current_tab = AppTab::IDevice;
+            }
+        });
 
         // ═══════════════════════════════════════════════════════════════════
         //  2. CYBER NAVIGATION RAIL // SEGMENTED TAB SELECTOR
@@ -140,35 +163,38 @@ impl eframe::App for ZaneMegApp {
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     let tabs = [
-                        (AppTab::Hardware, "⚡ HARDWARE & POWER", None),
+                        (AppTab::Hardware, "F1", "⚡ HARDWARE", None),
                         (
                             AppTab::Controller,
-                            "🎮 CONTROLLER SPACE",
+                            "F2",
+                            "🎮 CONTROLLER",
                             self.tab_controller.running_pid.map(|p| format!("PID {p}")),
                         ),
                         (
                             AppTab::Cleaner,
-                            "🧹 SYSTEM CLEANER",
+                            "F3",
+                            "🧹 CLEANER",
                             if self.tab_cleaner.is_running {
-                                Some("RUNNING".to_string())
+                                Some("BUSY".to_string())
                             } else {
                                 None
                             },
                         ),
-                        (AppTab::Headset, "🎧 HEADSET", None),
+                        (AppTab::Headset, "F4", "🎧 HEADSET", None),
                         (
                             AppTab::Security,
-                            "🛡️ SECURITY",
+                            "F5",
+                            "🛡️ SECURITY & OPS",
                             if self.tab_security.is_isolated {
                                 Some("LOCKED".to_string())
                             } else {
                                 None
                             },
                         ),
-                        (AppTab::IDevice, "📱 iDEVICE", None),
+                        (AppTab::IDevice, "F6", "📱 iDEVICE", None),
                     ];
 
-                    for (tab, label, tag) in tabs {
+                    for (tab, hk, label, tag) in tabs {
                         let is_active = self.current_tab == tab;
                         let bg_color = if is_active { RED_CRIMSON } else { BG_PANEL };
                         let text_color = if is_active { egui::Color32::WHITE } else { TEXT_MAIN };
@@ -179,9 +205,9 @@ impl eframe::App for ZaneMegApp {
                         };
 
                         let btn_content = if let Some(ref t) = tag {
-                            format!("{label} [{t}]")
+                            format!("[{hk}] {label} ({t})")
                         } else {
-                            label.to_string()
+                            format!("[{hk}] {label}")
                         };
 
                         let btn = egui::Button::new(
@@ -247,11 +273,13 @@ impl eframe::App for ZaneMegApp {
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         let sys_info = format!(
-                            "CPU: {:.0}°C | GPU: {:.0}°C | NVMe: {:.0}°C | {:.2} GHz",
+                            "LOAD: {:.0}% | CPU: {:.0}°C | GPU: {:.0}°C | NVMe: {:.0}°C | {:.2} GHz | UP: {}",
+                            self.tab_hardware.telemetry.cpu_load_pct,
                             self.tab_hardware.telemetry.cpu_temp,
                             self.tab_hardware.telemetry.gpu_temp,
                             self.tab_hardware.telemetry.nvme_temp,
-                            self.tab_hardware.telemetry.cpu_freq_ghz
+                            self.tab_hardware.telemetry.cpu_freq_ghz,
+                            self.tab_hardware.telemetry.uptime_formatted
                         );
                         ui.label(
                             egui::RichText::new(sys_info)

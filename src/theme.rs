@@ -1,4 +1,5 @@
 use eframe::egui;
+use std::f32::consts::PI;
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  CYBER-DECK V2.5 COLOR PALETTE
@@ -153,29 +154,133 @@ pub fn cyber_card<R>(
         .inner
 }
 
-/// Renders a compact telemetry tile with a left neon stripe, title, big primary value, and sub-label
-pub fn metric_tile(
+/// Renders a custom vector-painted 250° Radial Cockpit Arc Dial with digital readout
+pub fn radial_dial(
     ui: &mut egui::Ui,
     title: &str,
     primary_value: &str,
     sub_value: &str,
+    fraction: f32,
     accent: egui::Color32,
 ) {
+    let clamped = fraction.clamp(0.0, 1.0);
+
     egui::Frame::new()
         .fill(BG_CARD)
         .stroke(egui::Stroke::new(1.0, BORDER_DARK))
-        .corner_radius(7)
-        .inner_margin(egui::Margin::symmetric(12, 10))
+        .corner_radius(8)
+        .inner_margin(egui::Margin::symmetric(10, 8))
         .show(ui, |ui| {
-            ui.horizontal(|ui| {
-                let (bar_rect, _) = ui.allocate_exact_size(egui::vec2(3.5, 38.0), egui::Sense::hover());
-                ui.painter().rect_filled(bar_rect, 2.0, accent);
-                ui.add_space(4.0);
-                ui.vertical(|ui| {
-                    ui.label(egui::RichText::new(title).strong().size(9.5).color(TEXT_MUTED));
-                    ui.label(egui::RichText::new(primary_value).strong().size(16.5).color(TEXT_MAIN));
-                    ui.label(egui::RichText::new(sub_value).monospace().size(9.5).color(accent));
+            ui.vertical_centered(|ui| {
+                ui.label(egui::RichText::new(title).strong().size(9.5).color(TEXT_MUTED));
+                ui.add_space(2.0);
+
+                let dial_size = egui::vec2(76.0, 62.0);
+                let (rect, _) = ui.allocate_exact_size(dial_size, egui::Sense::hover());
+                let painter = ui.painter();
+
+                let center = egui::pos2(rect.center().x, rect.center().y + 4.0);
+                let radius = 27.0;
+
+                // Angles: 145 deg to 395 deg (250 deg sweep)
+                let start_angle = 145.0_f32.to_radians();
+                let sweep_angle = 250.0_f32.to_radians();
+                let segments = 28;
+
+                // 1. Background Track Arc
+                let bg_pts: Vec<egui::Pos2> = (0..=segments)
+                    .map(|i| {
+                        let t = i as f32 / segments as f32;
+                        let ang = start_angle + t * sweep_angle;
+                        egui::pos2(center.x + radius * ang.cos(), center.y + radius * ang.sin())
+                    })
+                    .collect();
+                painter.add(egui::Shape::line(
+                    bg_pts,
+                    egui::Stroke::new(4.5, BG_VOID),
+                ));
+
+                // 2. Active Glowing Value Arc
+                let active_segs = ((segments as f32 * clamped).ceil() as usize).max(1);
+                if clamped > 0.01 {
+                    let fg_pts: Vec<egui::Pos2> = (0..=active_segs)
+                        .map(|i| {
+                            let t = (i as f32 / active_segs as f32) * clamped;
+                            let ang = start_angle + t * sweep_angle;
+                            egui::pos2(center.x + radius * ang.cos(), center.y + radius * ang.sin())
+                        })
+                        .collect();
+
+                    // Subtle outer glow
+                    painter.add(egui::Shape::line(
+                        fg_pts.clone(),
+                        egui::Stroke::new(7.5, accent.gamma_multiply(0.22)),
+                    ));
+                    // Core neon arc
+                    painter.add(egui::Shape::line(
+                        fg_pts,
+                        egui::Stroke::new(4.5, accent),
+                    ));
+                }
+
+                // 3. Center Digital Value Text
+                painter.text(
+                    egui::pos2(center.x, center.y - 2.0),
+                    egui::Align2::CENTER_CENTER,
+                    primary_value,
+                    egui::FontId::proportional(14.5),
+                    TEXT_MAIN,
+                );
+
+                // 4. Bottom Sub-Label
+                let _ = PI; // keep import clean
+                ui.label(egui::RichText::new(sub_value).monospace().size(9.5).color(accent));
+            });
+        });
+}
+
+/// Renders a compact per-thread CPU core load bar (`T0`..`T11`)
+pub fn mini_core_bar(ui: &mut egui::Ui, idx: usize, load_pct: f32) {
+    let clamped = (load_pct / 100.0).clamp(0.0, 1.0);
+    let color = if load_pct >= 80.0 {
+        RED_BRIGHT
+    } else if load_pct >= 45.0 {
+        AMBER_WARN
+    } else {
+        CYAN_INFO
+    };
+
+    egui::Frame::new()
+        .fill(BG_CARD)
+        .stroke(egui::Stroke::new(1.0, BORDER_SUBTLE))
+        .corner_radius(4)
+        .inner_margin(egui::Margin::symmetric(6, 4))
+        .show(ui, |ui| {
+            ui.vertical(|ui| {
+                ui.horizontal(|ui| {
+                    ui.label(
+                        egui::RichText::new(format!("T{idx:<2}"))
+                            .monospace()
+                            .size(8.5)
+                            .color(TEXT_MUTED),
+                    );
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.label(
+                            egui::RichText::new(format!("{load_pct:>3.0}%"))
+                                .monospace()
+                                .size(8.5)
+                                .color(color),
+                        );
+                    });
                 });
+
+                let (rect, _) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 4.5), egui::Sense::hover());
+                ui.painter().rect_filled(rect, 2.0, BG_VOID);
+                if clamped > 0.01 {
+                    let fill_w = (rect.width() * clamped).max(2.0);
+                    let fill_rect = egui::Rect::from_min_size(rect.min, egui::vec2(fill_w, rect.height()));
+                    ui.painter().rect_filled(fill_rect, 2.0, color);
+                }
             });
         });
 }

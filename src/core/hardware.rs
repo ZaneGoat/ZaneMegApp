@@ -3,11 +3,19 @@ use std::process::Command;
 
 pub const ISW_SECTION: &str = "16G41";
 
+#[derive(Clone, Debug, Default)]
+pub struct CpuTimes {
+    pub total: u64,
+    pub idle: u64,
+}
+
 #[derive(Clone, Debug)]
 pub struct HardwareTelemetry {
     pub cpu_temp: f32,
     pub gpu_temp: f32,
     pub nvme_temp: f32,
+    pub cpu_load_pct: f32,
+    pub core_loads: Vec<f32>,
     #[allow(dead_code)]
     pub cpu_fan_speed: f32,
     #[allow(dead_code)]
@@ -16,6 +24,7 @@ pub struct HardwareTelemetry {
     pub cpu_governor: String,
     pub battery_pct: u32,
     pub battery_status: String,
+    pub uptime_formatted: String,
 }
 
 impl Default for HardwareTelemetry {
@@ -24,12 +33,15 @@ impl Default for HardwareTelemetry {
             cpu_temp: 0.0,
             gpu_temp: 0.0,
             nvme_temp: 0.0,
+            cpu_load_pct: 0.0,
+            core_loads: vec![0.0; 12],
             cpu_fan_speed: 0.0,
             gpu_fan_speed: 0.0,
             cpu_freq_ghz: 0.0,
-            cpu_governor: "powersave".into(),
+            cpu_governor: "POWERSAVE".into(),
             battery_pct: 100,
             battery_status: "AC".into(),
+            uptime_formatted: "0h 00m".into(),
         }
     }
 }
@@ -62,9 +74,67 @@ impl HardwareManager {
         }
     }
 
-    /// Read instantaneous thermal, clock, NVMe, and battery telemetry from sysfs
-    pub fn read_telemetry() -> HardwareTelemetry {
+    /// Reads raw CPU jiffies from `/proc/stat` for overall CPU + per-thread cores
+    pub fn read_cpu_times() -> (CpuTimes, Vec<CpuTimes>) {
+        let mut overall = CpuTimes::default();
+        let mut cores = Vec::new();
+
+        if let Ok(stat) = fs::read_to_string("/proc/stat") {
+            for line in stat.lines() {
+                if !line.starts_with("cpu") {
+                    break;
+                }
+                let mut parts = line.split_whitespace();
+                let Some(label) = parts.next() else { continue };
+                let vals: Vec<u64> = parts.filter_map(|s| s.parse::<u64>().ok()).collect();
+                if vals.len() >= 4 {
+                    let idle = vals[3] + vals.get(4).copied().unwrap_or(0);
+                    let total: u64 = vals.iter().sum();
+                    if label == "cpu" {
+                        overall = CpuTimes { total, idle };
+                    } else {
+                        cores.push(CpuTimes { total, idle });
+                    }
+                }
+            }
+        }
+        (overall, cores)
+    }
+
+    /// Read instantaneous thermal, clock, NVMe, battery, and CPU load telemetry from sysfs/procfs
+    pub fn read_telemetry(
+        prev_overall: &mut CpuTimes,
+        prev_cores: &mut Vec<CpuTimes>,
+    ) -> HardwareTelemetry {
         let mut telem = HardwareTelemetry::default();
+
+        // 0. Compute CPU load % deltas from /proc/stat
+        let (cur_overall, cur_cores) = Self::read_cpu_times();
+        if prev_overall.total > 0 && cur_overall.total > prev_overall.total {
+            let d_total = (cur_overall.total - prev_overall.total) as f32;
+            let d_idle = (cur_overall.idle.saturating_sub(prev_overall.idle)) as f32;
+            telem.cpu_load_pct = ((1.0 - d_idle / d_total) * 100.0).clamp(0.0, 100.0);
+        }
+        *prev_overall = cur_overall;
+
+        if prev_cores.len() == cur_cores.len() && !cur_cores.is_empty() {
+            telem.core_loads = cur_cores
+                .iter()
+                .zip(prev_cores.iter())
+                .map(|(cur, prev)| {
+                    if cur.total > prev.total {
+                        let dt = (cur.total - prev.total) as f32;
+                        let di = (cur.idle.saturating_sub(prev.idle)) as f32;
+                        ((1.0 - di / dt) * 100.0).clamp(0.0, 100.0)
+                    } else {
+                        0.0
+                    }
+                })
+                .collect();
+        } else if !cur_cores.is_empty() {
+            telem.core_loads = vec![0.0; cur_cores.len()];
+        }
+        *prev_cores = cur_cores;
 
         // 1. Scan /sys/class/hwmon for coretemp, nvme, and GPU sensors
         if let Ok(entries) = fs::read_dir("/sys/class/hwmon") {
@@ -131,6 +201,18 @@ impl HardwareManager {
         }
         if let Ok(stat_str) = fs::read_to_string("/sys/class/power_supply/BAT1/status") {
             telem.battery_status = stat_str.trim().to_string();
+        }
+
+        // 4. Read System Uptime from /proc/uptime
+        if let Ok(up_str) = fs::read_to_string("/proc/uptime") {
+            if let Some(first) = up_str.split_whitespace().next() {
+                if let Ok(secs_f) = first.parse::<f64>() {
+                    let total_secs = secs_f as u64;
+                    let hours = total_secs / 3600;
+                    let mins = (total_secs % 3600) / 60;
+                    telem.uptime_formatted = format!("{hours}h {mins:02}m");
+                }
+            }
         }
 
         telem

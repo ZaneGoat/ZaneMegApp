@@ -199,6 +199,51 @@ impl CleanerManager {
         res
     }
 
+    /// Scans `/proc` for the top memory-consuming processes (RSS in MB)
+    pub fn read_top_processes(limit: usize) -> Vec<(u32, String, f32)> {
+        let mut procs = Vec::new();
+        let my_pid = std::process::id();
+
+        if let Ok(entries) = fs::read_dir("/proc") {
+            for entry in entries.flatten() {
+                let Ok(fname) = entry.file_name().into_string() else { continue };
+                let Ok(pid) = fname.parse::<u32>() else { continue };
+                if pid <= 2 || pid == my_pid {
+                    continue;
+                }
+
+                let path = entry.path();
+                let Ok(statm) = fs::read_to_string(path.join("statm")) else { continue };
+                let Some(rss_str) = statm.split_whitespace().nth(1) else { continue };
+                let Ok(rss_pages) = rss_str.parse::<u64>() else { continue };
+                let rss_mb = (rss_pages * 4) as f32 / 1024.0;
+                if rss_mb < 15.0 {
+                    continue;
+                }
+
+                let Ok(comm) = fs::read_to_string(path.join("comm")) else { continue };
+                procs.push((pid, comm.trim().to_string(), rss_mb));
+            }
+        }
+
+        procs.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
+        procs.truncate(limit);
+        procs
+    }
+
+    /// Sends SIGTERM to a target PID from the Live RAM Hogs Sniper
+    pub fn snipe_process(pid: u32, name: &str, tx: &Sender<String>) {
+        let res = Command::new("kill").args(["-15", &pid.to_string()]).status();
+        match res {
+            Ok(s) if s.success() => {
+                tx.send(format!("[✓] SNIPED process '{name}' (PID {pid}) via SIGTERM.")).ok();
+            }
+            _ => {
+                tx.send(format!("[!] Could not terminate '{name}' (PID {pid}) — may require root.")).ok();
+            }
+        }
+    }
+
     pub fn execute_cleanup(selected_ids: &[String], tx: Sender<String>) {
         let before = Self::read_system_resources();
 

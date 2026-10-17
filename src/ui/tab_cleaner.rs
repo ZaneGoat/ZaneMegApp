@@ -9,6 +9,7 @@ use crate::theme::*;
 pub struct TabCleaner {
     pub selected_ids: HashSet<String>,
     pub resources: SystemResources,
+    pub top_procs: Vec<(u32, String, f32)>,
     pub last_reclaimed_banner: Option<String>,
     pub logs: Vec<String>,
     pub is_running: bool,
@@ -28,10 +29,11 @@ impl TabCleaner {
         Self {
             selected_ids,
             resources: CleanerManager::read_system_resources(),
+            top_procs: CleanerManager::read_top_processes(5),
             last_reclaimed_banner: None,
             logs: vec![
                 "[*] System Cleaner Matrix online.".into(),
-                "[*] Select target modules or trigger Quick RAM Boost.".into(),
+                "[*] Select target modules, snipe heavy processes, or trigger Quick RAM Boost.".into(),
             ],
             is_running: false,
             tx,
@@ -41,6 +43,7 @@ impl TabCleaner {
 
     pub fn update_resources(&mut self) {
         self.resources = CleanerManager::read_system_resources();
+        self.top_procs = CleanerManager::read_top_processes(5);
     }
 
     pub fn poll_logs(&mut self) {
@@ -131,9 +134,9 @@ impl TabCleaner {
             },
         );
 
-        ui.add_space(8.0);
+        ui.add_space(6.0);
 
-        // 2. Main Split View: Module Matrix (Left) + Execution Console (Right)
+        // 2. Main Split View: Module Matrix (Left) + Process Sniper & Console (Right)
         ui.horizontal_top(|ui| {
             // Left Sidebar: Cleanup Modules
             egui::Frame::new()
@@ -298,14 +301,94 @@ impl TabCleaner {
 
             ui.add_space(6.0);
 
-            // Right Pane: Cyber Console Log
+            // Right Pane: Top RAM Hogs Process Sniper + Cyber Console Log
             ui.vertical(|ui| {
+                // Top Memory Hogs Live Sniper Card
+                cyber_card(
+                    ui,
+                    "🎯 LIVE TOP RAM HOGS // PROCESS SNIPER",
+                    Some("REALTIME /PROC RSS SCANNER"),
+                    AMBER_WARN,
+                    Some(("SIGTERM DISPATCH", AMBER_WARN, AMBER_SUBTLE)),
+                    |ui| {
+                        let procs_snapshot = self.top_procs.clone();
+                        let mut sniped_action: Option<(u32, String)> = None;
+
+                        for (pid, name, rss_mb) in procs_snapshot {
+                            egui::Frame::new()
+                                .fill(BG_CARD)
+                                .corner_radius(5)
+                                .inner_margin(egui::Margin::symmetric(10, 4))
+                                .show(ui, |ui| {
+                                    ui.horizontal(|ui| {
+                                        ui.label(
+                                            egui::RichText::new(format!("PID {pid:<6}"))
+                                                .monospace()
+                                                .size(10.0)
+                                                .color(TEXT_DIM),
+                                        );
+                                        ui.label(
+                                            egui::RichText::new(&name)
+                                                .strong()
+                                                .size(11.0)
+                                                .color(TEXT_MAIN),
+                                        );
+
+                                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                            if ui
+                                                .add(
+                                                    egui::Button::new(
+                                                        egui::RichText::new("🎯 SNIPE")
+                                                            .strong()
+                                                            .size(9.5)
+                                                            .color(RED_BRIGHT),
+                                                    )
+                                                    .fill(RED_SUBTLE)
+                                                    .min_size(egui::vec2(64.0, 20.0)),
+                                                )
+                                                .on_hover_text(format!("Send SIGTERM to {name} (PID {pid})"))
+                                                .clicked()
+                                            {
+                                                sniped_action = Some((pid, name.clone()));
+                                            }
+
+                                            ui.add_space(6.0);
+                                            let mem_color = if rss_mb >= 800.0 {
+                                                RED_BRIGHT
+                                            } else if rss_mb >= 300.0 {
+                                                AMBER_WARN
+                                            } else {
+                                                CYAN_INFO
+                                            };
+                                            ui.label(
+                                                egui::RichText::new(format!("{rss_mb:.0} MB"))
+                                                    .monospace()
+                                                    .strong()
+                                                    .size(10.5)
+                                                    .color(mem_color),
+                                            );
+                                        });
+                                    });
+                                });
+                        }
+
+                        if let Some((pid, name)) = sniped_action {
+                            CleanerManager::snipe_process(pid, &name, &self.tx);
+                            self.update_resources();
+                            set_status(format!("Sent SIGTERM to {name} (PID {pid})"), AMBER_WARN);
+                        }
+                    },
+                );
+
+                ui.add_space(6.0);
+
+                // Execution Console
                 cyber_console(
                     ui,
                     "cleaner_console_scroll",
                     "SYSTEM CLEANER // REALTIME EXECUTION MATRIX",
                     &mut self.logs,
-                    415.0,
+                    220.0,
                 );
             });
         });
