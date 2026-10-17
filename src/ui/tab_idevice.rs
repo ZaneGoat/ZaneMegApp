@@ -18,8 +18,8 @@ impl TabIDevice {
         let (tx, rx) = channel();
         Self {
             logs: vec![
-                "[*] iDevice Toolkit ready.".into(),
-                "[*] Connect an iOS device via USB and pair to enable diagnostics.".into(),
+                "[*] iOS USB Device Toolkit ready.".into(),
+                "[*] Connect an iPhone or iPad via USB cable, then click any diagnostic card on the left.".into(),
             ],
             syslog_proc: None,
             iproxy_proc: None,
@@ -39,155 +39,169 @@ impl TabIDevice {
 
     pub fn ui(&mut self, ui: &mut egui::Ui, set_status: &mut dyn FnMut(String, egui::Color32)) {
         self.poll_logs();
-        ui.add_space(4.0);
+
+        legend_strip(
+            ui,
+            "USB diagnostics, live system logs, pairing, and local TCP port forwarding for iOS devices.",
+            &[
+                ("Stream Active", GREEN_OK),
+                ("USB Standby", CYAN_INFO),
+            ],
+        );
+
+        ui.add_space(6.0);
 
         let is_syslog = self.syslog_proc.is_some();
         let is_iproxy = self.iproxy_proc.is_some();
 
         let badge_text = if is_syslog && is_iproxy {
-            "SYSLOG + IPROXY ACTIVE"
+            "SYSLOG + TUNNEL ACTIVE"
         } else if is_syslog {
             "SYSLOG STREAMING"
         } else if is_iproxy {
-            "IPROXY TUNNEL ACTIVE"
+            "SSH TUNNEL ACTIVE"
         } else {
-            "USB STANDBY"
+            "USB READY"
         };
 
         let badge = if is_syslog || is_iproxy {
             (badge_text, GREEN_OK, GREEN_SUBTLE)
         } else {
-            (badge_text, TEXT_MUTED, BG_CARD)
+            (badge_text, CYAN_INFO, CYAN_SUBTLE)
         };
 
         ui.horizontal_top(|ui| {
-            // Left Action Sidebar
+            // Left Action Sidebar using Custom Painted Action Card Buttons
             ui.vertical(|ui| {
-                ui.set_width(310.0);
+                ui.set_width(355.0);
 
                 cyber_card(
                     ui,
-                    "iOS USB TOOLKIT",
-                    Some("LIBIMOBILEDEVICE"),
+                    "📱 iOS USB DIAGNOSTIC TOOLS",
+                    Some("Click a tool to inspect or connect to your device"),
                     RED_PRIMARY,
                     Some(badge),
                     |ui| {
-                        // Diagnostic tools
-                        let info_btn = egui::Button::new(
-                            egui::RichText::new("📱 Query Device Info (ideviceinfo)")
-                                .strong()
-                                .size(11.0),
-                        )
-                        .fill(BG_CARD)
-                        .min_size(egui::vec2(ui.available_width(), 34.0));
-
-                        if ui.add(info_btn).clicked() {
+                        if action_card_button(
+                            ui,
+                            "📱",
+                            "Read Device Hardware Info",
+                            "Displays model, iOS version, serial, and battery details",
+                            Some(("QUERY", CYAN_INFO)),
+                            CYAN_INFO,
+                            false,
+                        ) {
                             IDeviceManager::run_command(&["ideviceinfo"], "Device Info", self.tx.clone());
-                            set_status("Querying ideviceinfo...".into(), CYAN_INFO);
+                            set_status("Reading iOS device info via USB...".into(), CYAN_INFO);
                         }
 
-                        ui.add_space(4.0);
+                        ui.add_space(5.0);
 
-                        // Syslog Toggle Button
-                        let syslog_text = if is_syslog {
-                            "🛑 STOP SYSLOG STREAM"
+                        let syslog_title = if is_syslog {
+                            "Stop Live Console Log Stream"
                         } else {
-                            "📜 STREAM LIVE SYSLOG (idevicesyslog)"
+                            "Stream Live iOS System Logs"
                         };
-                        let syslog_fill = if is_syslog { RED_CRIMSON } else { BG_CARD };
-                        let syslog_btn = egui::Button::new(
-                            egui::RichText::new(syslog_text)
-                                .strong()
-                                .size(11.0)
-                                .color(if is_syslog { egui::Color32::WHITE } else { TEXT_MAIN }),
-                        )
-                        .fill(syslog_fill)
-                        .min_size(egui::vec2(ui.available_width(), 34.0));
-
-                        if ui.add(syslog_btn).clicked() {
+                        let syslog_tag = if is_syslog {
+                            ("STREAMING", GREEN_OK)
+                        } else {
+                            ("START", TEXT_MUTED)
+                        };
+                        if action_card_button(
+                            ui,
+                            if is_syslog { "🛑" } else { "📜" },
+                            syslog_title,
+                            "Streams real-time system & app debug messages over USB",
+                            Some(syslog_tag),
+                            if is_syslog { GREEN_OK } else { RED_PRIMARY },
+                            is_syslog,
+                        ) {
                             if let Some(mut proc) = self.syslog_proc.take() {
                                 let _ = proc.kill();
                                 self.tx.send("[*] idevicesyslog streaming stopped.".into()).ok();
-                                set_status("Stopped idevicesyslog".into(), TEXT_MUTED);
+                                set_status("Stopped iOS syslog stream".into(), TEXT_MUTED);
                             } else {
                                 match IDeviceManager::start_syslog(self.tx.clone()) {
                                     Ok(proc) => {
                                         self.syslog_proc = Some(proc);
-                                        set_status("Streaming idevicesyslog...".into(), GREEN_OK);
+                                        set_status("Streaming live iOS syslog...".into(), GREEN_OK);
                                     }
                                     Err(e) => set_status(e, RED_BRIGHT),
                                 }
                             }
                         }
 
-                        ui.add_space(4.0);
+                        ui.add_space(5.0);
 
-                        // iProxy SSH Forwarding Toggle
-                        let iproxy_text = if is_iproxy {
-                            "🛑 STOP SSH PROXY TUNNEL"
+                        let iproxy_title = if is_iproxy {
+                            "Stop USB Port Tunnel (2222 -> 22)"
                         } else {
-                            "🔌 FORWARD 127.0.0.1:2222 -> :22"
+                            "Start USB SSH Port Tunnel (2222 -> 22)"
                         };
-                        let iproxy_fill = if is_iproxy { RED_CRIMSON } else { BG_CARD };
-                        let iproxy_btn = egui::Button::new(
-                            egui::RichText::new(iproxy_text)
-                                .strong()
-                                .size(11.0)
-                                .color(if is_iproxy { egui::Color32::WHITE } else { TEXT_MAIN }),
-                        )
-                        .fill(iproxy_fill)
-                        .min_size(egui::vec2(ui.available_width(), 34.0));
-
-                        if ui.add(iproxy_btn).clicked() {
+                        let iproxy_tag = if is_iproxy {
+                            ("TUNNEL ON", GREEN_OK)
+                        } else {
+                            ("FORWARD", TEXT_MUTED)
+                        };
+                        if action_card_button(
+                            ui,
+                            if is_iproxy { "🛑" } else { "🔌" },
+                            iproxy_title,
+                            "Forwards localhost:2222 to port 22 on the iOS device",
+                            Some(iproxy_tag),
+                            if is_iproxy { GREEN_OK } else { AMBER_WARN },
+                            is_iproxy,
+                        ) {
                             if let Some(mut proc) = self.iproxy_proc.take() {
                                 let _ = proc.kill();
                                 self.tx.send("[*] iproxy tunnel stopped.".into()).ok();
-                                set_status("Stopped iproxy tunnel".into(), TEXT_MUTED);
+                                set_status("Stopped iproxy USB tunnel".into(), TEXT_MUTED);
                             } else {
                                 match IDeviceManager::start_iproxy(2222, 22, self.tx.clone()) {
                                     Ok(proc) => {
                                         self.iproxy_proc = Some(proc);
-                                        set_status("iproxy active: 127.0.0.1:2222 -> iOS :22".into(), GREEN_OK);
+                                        set_status("USB tunnel active on 127.0.0.1:2222 -> iOS :22".into(), GREEN_OK);
                                     }
                                     Err(e) => set_status(e, RED_BRIGHT),
                                 }
                             }
                         }
 
-                        ui.add_space(6.0);
-                        ui.separator();
-                        ui.add_space(6.0);
+                        ui.add_space(5.0);
 
-                        // Pairing Controls
-                        ui.columns(2, |cols| {
-                            if cols[0]
-                                .add_sized(
-                                    [cols[0].available_width(), 30.0],
-                                    egui::Button::new(egui::RichText::new("🔑 Pair Device").size(11.0)),
-                                )
-                                .clicked()
-                            {
-                                IDeviceManager::run_command(
-                                    &["idevicepair", "pair"],
-                                    "Pair Device",
-                                    self.tx.clone(),
-                                );
-                            }
+                        if action_card_button(
+                            ui,
+                            "🔑",
+                            "Pair USB Device (Trust Computer)",
+                            "Initiates the 'Trust This Computer' prompt on the iOS screen",
+                            None,
+                            GREEN_OK,
+                            false,
+                        ) {
+                            IDeviceManager::run_command(
+                                &["idevicepair", "pair"],
+                                "Pair Device",
+                                self.tx.clone(),
+                            );
+                        }
 
-                            if cols[1]
-                                .add_sized(
-                                    [cols[1].available_width(), 30.0],
-                                    egui::Button::new(egui::RichText::new("✅ Validate").size(11.0)),
-                                )
-                                .clicked()
-                            {
-                                IDeviceManager::run_command(
-                                    &["idevicepair", "validate"],
-                                    "Validate Pairing",
-                                    self.tx.clone(),
-                                );
-                            }
-                        });
+                        ui.add_space(5.0);
+
+                        if action_card_button(
+                            ui,
+                            "✅",
+                            "Validate Existing USB Trust",
+                            "Verifies whether this computer is already trusted by the device",
+                            None,
+                            CYAN_INFO,
+                            false,
+                        ) {
+                            IDeviceManager::run_command(
+                                &["idevicepair", "validate"],
+                                "Validate Pairing",
+                                self.tx.clone(),
+                            );
+                        }
                     },
                 );
             });
@@ -199,7 +213,7 @@ impl TabIDevice {
                 cyber_console(
                     ui,
                     "idevice_console_scroll",
-                    "iDEVICE DIAGNOSTIC // CONSOLE & RUNTIME STREAM",
+                    "iOS DEVICE // DIAGNOSTIC & CONSOLE OUTPUT",
                     &mut self.logs,
                     415.0,
                 );

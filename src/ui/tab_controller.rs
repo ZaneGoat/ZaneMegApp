@@ -17,7 +17,7 @@ impl TabController {
         let (tx, rx) = channel();
         let manager = ControllerManager::new();
         let init_target = format!(
-            "[*] Controller Space Flight Deck initialized.\n[*] Target Directory: {}\n[*] Target Launcher: {}\n[*] Ready to launch Starship Cockpit.",
+            "[*] Controller Space Flight Deck initialized.\n[*] Target Directory: {}\n[*] Target Launcher: {}\n[*] Click 'Launch Starship Cockpit' above to start 1000Hz gamepad telemetry.",
             manager.dir.display(),
             manager.script.display()
         );
@@ -47,56 +47,48 @@ impl TabController {
 
     pub fn ui(&mut self, ui: &mut egui::Ui, set_status: &mut dyn FnMut(String, egui::Color32)) {
         self.poll_logs();
-        ui.add_space(4.0);
+
+        legend_strip(
+            ui,
+            "Launch and manage the PS4 DualShock 4 / Gamepad 1000Hz dashboard, RGB lightbar, and haptics.",
+            &[
+                ("Cockpit Running", GREEN_OK),
+                ("Standby / Ready", CYAN_INFO),
+            ],
+        );
+
+        ui.add_space(6.0);
 
         let is_running = ControllerManager::is_running(self.running_pid);
         let badge_str = if let Some(pid) = self.running_pid {
-            format!("● ONLINE (PID {pid})")
+            format!("● RUNNING (PID {pid})")
         } else {
-            "● OFFLINE / STANDBY".to_string()
+            "● STANDBY / READY".to_string()
         };
         let badge = if is_running {
             (badge_str.as_str(), GREEN_OK, GREEN_SUBTLE)
         } else {
-            (badge_str.as_str(), TEXT_MUTED, BG_CARD)
+            (badge_str.as_str(), CYAN_INFO, CYAN_SUBTLE)
         };
 
-        // 1. Flight Deck Hero & Lifecycle Matrix Card
+        // 1. Flight Deck Main Controls Card
         cyber_card(
             ui,
             "🛸 CONTROLLER SPACE // STARSHIP FLIGHT DECK",
-            Some("DUALSHOCK 4 & GAMEPAD TELEMETRY MATRIX"),
+            Some("1000Hz Gamepad Polling, Touchpad, Gyro & Haptics"),
             RED_PRIMARY,
             Some(badge),
             |ui| {
-                ui.label(
-                    egui::RichText::new(
-                        "1000Hz Polling Rate • Capacitive Touchpad Matrix • Gyro/Accel IMU • Haptics & RGB Lightbar Control",
-                    )
-                    .size(11.0)
-                    .color(TEXT_MUTED),
-                );
-                ui.label(
-                    egui::RichText::new(format!("Launcher Script: {}", self.manager.script.display()))
-                        .monospace()
-                        .size(10.0)
-                        .color(CYAN_INFO),
-                );
-
-                ui.add_space(8.0);
-
-                // Primary Lifecycle Buttons Row
-                ui.horizontal(|ui| {
-                    let start_btn = egui::Button::new(
-                        egui::RichText::new("🚀 LAUNCH STARSHIP COCKPIT (start.sh)")
-                            .strong()
-                            .size(12.0)
-                            .color(egui::Color32::WHITE),
-                    )
-                    .fill(if is_running { BG_ELEVATED } else { RED_PRIMARY })
-                    .min_size(egui::vec2(290.0, 38.0));
-
-                    if ui.add(start_btn).clicked() {
+                ui.columns(3, |cols| {
+                    if action_card_button(
+                        &mut cols[0],
+                        "🚀",
+                        "Launch Starship Cockpit",
+                        "Starts start.sh dashboard & telemetry",
+                        Some((if is_running { "ACTIVE" } else { "LAUNCH" }, GREEN_OK)),
+                        RED_PRIMARY,
+                        !is_running,
+                    ) {
                         if is_running {
                             set_status("Controller Space is already running".into(), AMBER_WARN);
                         } else {
@@ -110,23 +102,15 @@ impl TabController {
                         }
                     }
 
-                    let stop_btn = egui::Button::new(egui::RichText::new("🛑 TERMINATE").strong().size(11.5))
-                        .fill(if is_running { RED_CRIMSON } else { BG_CARD })
-                        .min_size(egui::vec2(120.0, 38.0));
-
-                    if ui.add_enabled(is_running, stop_btn).clicked() {
-                        if let Some(pid) = self.running_pid {
-                            ControllerManager::stop(pid, &self.tx);
-                            self.running_pid = None;
-                            set_status("Stopped Controller Space".into(), GREEN_OK);
-                        }
-                    }
-
-                    let restart_btn = egui::Button::new(egui::RichText::new("🔄 RESTART").strong().size(11.5))
-                        .fill(BG_CARD)
-                        .min_size(egui::vec2(120.0, 38.0));
-
-                    if ui.add(restart_btn).clicked() {
+                    if action_card_button(
+                        &mut cols[1],
+                        "🔄",
+                        "Restart Cockpit",
+                        "Reloads the controller service cleanly",
+                        Some(("RELOAD", CYAN_INFO)),
+                        CYAN_INFO,
+                        false,
+                    ) {
                         if let Some(pid) = self.running_pid {
                             ControllerManager::stop(pid, &self.tx);
                         }
@@ -138,55 +122,78 @@ impl TabController {
                             Err(e) => set_status(e, RED_BRIGHT),
                         }
                     }
+
+                    if action_card_button(
+                        &mut cols[2],
+                        "🛑",
+                        "Stop Cockpit",
+                        "Closes the running controller service",
+                        Some(("STOP", RED_BRIGHT)),
+                        RED_BRIGHT,
+                        is_running,
+                    ) && is_running
+                    {
+                        if let Some(pid) = self.running_pid {
+                            ControllerManager::stop(pid, &self.tx);
+                            self.running_pid = None;
+                            set_status("Stopped Controller Space".into(), GREEN_OK);
+                        }
+                    }
                 });
 
                 ui.add_space(6.0);
 
                 // Quick Subsystem Shortcuts
                 ui.columns(3, |cols| {
-                    if cols[0]
-                        .add_sized(
-                            [cols[0].available_width(), 32.0],
-                            egui::Button::new(egui::RichText::new("💡 Launch LED & Rumble Matrix (led.py)").size(11.0)),
-                        )
-                        .clicked()
-                    {
+                    if action_card_button(
+                        &mut cols[0],
+                        "💡",
+                        "LED & Rumble Matrix",
+                        "Open standalone RGB lightbar & vibration tuner",
+                        None,
+                        AMBER_WARN,
+                        false,
+                    ) {
                         self.manager.launch_led(&self.tx);
-                        set_status("Launched LED & Rumble Matrix Window".into(), CYAN_INFO);
+                        set_status("Opened LED & Rumble Matrix Window".into(), CYAN_INFO);
                     }
 
-                    if cols[1]
-                        .add_sized(
-                            [cols[1].available_width(), 32.0],
-                            egui::Button::new(egui::RichText::new("📂 Open Project Directory").size(11.0)),
-                        )
-                        .clicked()
-                    {
+                    if action_card_button(
+                        &mut cols[1],
+                        "📂",
+                        "Open Project Folder",
+                        "Browse Controller Space source files",
+                        None,
+                        CYAN_INFO,
+                        false,
+                    ) {
                         self.manager.open_folder();
                     }
 
-                    if cols[2]
-                        .add_sized(
-                            [cols[2].available_width(), 32.0],
-                            egui::Button::new(egui::RichText::new("🌐 GitHub: ZaneGoat/Controler-space").size(11.0)),
-                        )
-                        .clicked()
-                    {
+                    if action_card_button(
+                        &mut cols[2],
+                        "🌐",
+                        "GitHub Repository",
+                        "Open ZaneGoat/Controler-space in browser",
+                        None,
+                        GREEN_OK,
+                        false,
+                    ) {
                         ControllerManager::open_github();
                     }
                 });
             },
         );
 
-        ui.add_space(8.0);
+        ui.add_space(6.0);
 
         // 2. Live Subprocess Telemetry Console
         cyber_console(
             ui,
             "controller_console_scroll",
-            "CONTROLLER SPACE // SUBPROCESS STDOUT & STDERR STREAM",
+            "CONTROLLER SPACE // LIVE OUTPUT LOG",
             &mut self.logs,
-            310.0,
+            320.0,
         );
     }
 }

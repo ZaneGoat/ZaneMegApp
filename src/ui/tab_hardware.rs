@@ -73,7 +73,6 @@ impl TabHardware {
         }
         self.nvme_history.push_back([x, nvme_y]);
 
-        // Auto trigger smart boost if enabled and temp exceeds 80°C
         if self.smart_boost
             && (self.telemetry.cpu_temp >= 80.0 || self.telemetry.gpu_temp >= 80.0)
             && !self.cooler_boost
@@ -87,7 +86,6 @@ impl TabHardware {
     }
 
     pub fn ui(&mut self, ui: &mut egui::Ui, set_status: &mut dyn FnMut(String, egui::Color32)) {
-        // Poll async hardware action completions
         while let Ok(res) = self.rx.try_recv() {
             match res {
                 Ok(msg) => set_status(msg, GREEN_OK),
@@ -95,11 +93,21 @@ impl TabHardware {
             }
         }
 
-        ui.add_space(4.0);
+        // Visual Guide Strip
+        legend_strip(
+            ui,
+            "Real-time temperatures, CPU core activity, display refresh rate, and fan cooling controls.",
+            &[
+                ("Optimal (<65°C)", GREEN_OK),
+                ("Warm (65–79°C)", AMBER_WARN),
+                ("High Heat (≥80°C)", RED_BRIGHT),
+            ],
+        );
+
+        ui.add_space(6.0);
 
         // 1. Top 4-Column Radial Cockpit Arc Dials
         ui.columns(4, |cols| {
-            // Dial 1: CPU Load %
             let load_frac = self.telemetry.cpu_load_pct / 100.0;
             let load_color = if self.telemetry.cpu_load_pct >= 80.0 {
                 RED_BRIGHT
@@ -110,43 +118,40 @@ impl TabHardware {
             };
             radial_dial(
                 &mut cols[0],
-                "CPU UTILIZATION",
+                "CPU ACTIVITY",
                 &format!("{:.0}%", self.telemetry.cpu_load_pct),
                 &format!("{:.2} GHz • {}", self.telemetry.cpu_freq_ghz, self.telemetry.cpu_governor),
                 load_frac,
                 load_color,
             );
 
-            // Dial 2: CPU Package Temp
             let cpu_t_frac = ((self.telemetry.cpu_temp - 25.0) / 75.0).clamp(0.0, 1.0);
-            let cpu_color = if self.telemetry.cpu_temp >= 80.0 {
-                RED_BRIGHT
+            let (cpu_color, cpu_desc) = if self.telemetry.cpu_temp >= 80.0 {
+                (RED_BRIGHT, "High Thermal Load")
             } else if self.telemetry.cpu_temp >= 65.0 {
-                AMBER_WARN
+                (AMBER_WARN, "Warm / Active")
             } else {
-                GREEN_OK
+                (GREEN_OK, "Cooling Normally")
             };
             radial_dial(
                 &mut cols[1],
-                "CPU PACKAGE TEMP",
+                "CPU TEMPERATURE",
                 &format!("{:.0}°C", self.telemetry.cpu_temp),
-                &format!("NVMe SSD: {:.0}°C", self.telemetry.nvme_temp),
+                cpu_desc,
                 cpu_t_frac,
                 cpu_color,
             );
 
-            // Dial 3: GPU / Thermal Zone
             let gpu_t_frac = ((self.telemetry.gpu_temp - 25.0) / 75.0).clamp(0.0, 1.0);
             radial_dial(
                 &mut cols[2],
-                "GPU / PCH THERMAL",
+                "GPU & SSD TEMP",
                 &format!("{:.0}°C", self.telemetry.gpu_temp),
-                if self.cooler_boost { "FAN: MAX BOOST" } else { "FAN: EC AUTO" },
+                &format!("NVMe SSD: {:.0}°C", self.telemetry.nvme_temp),
                 gpu_t_frac,
                 RED_PRIMARY,
             );
 
-            // Dial 4: Battery Cell
             let bat_frac = self.telemetry.battery_pct as f32 / 100.0;
             let bat_color = if self.telemetry.battery_pct <= 20 {
                 RED_BRIGHT
@@ -155,9 +160,9 @@ impl TabHardware {
             };
             radial_dial(
                 &mut cols[3],
-                "BATTERY CELL",
+                "BATTERY LEVEL",
                 &format!("{}%", self.telemetry.battery_pct),
-                &format!("{} (Cap {}%)", self.telemetry.battery_status, self.battery_limit),
+                &format!("{} (Limit {}%)", self.telemetry.battery_status, self.battery_limit),
                 bat_frac,
                 bat_color,
             );
@@ -165,135 +170,71 @@ impl TabHardware {
 
         ui.add_space(6.0);
 
-        // 2. 12-Thread Per-Core Utilization Matrix Strip (Intel i5-10500H)
+        // 2. Power Profiles Selector Cards
+        let active_badge = format!("CURRENT MODE: {}", self.active_profile.to_uppercase());
         cyber_card(
             ui,
-            "12-THREAD CORE MATRIX",
-            Some("INTEL CORE i5-10500H PER-THREAD TELEMETRY"),
-            CYAN_INFO,
-            Some((
-                &format!("UPTIME: {}", self.telemetry.uptime_formatted),
-                CYAN_INFO,
-                CYAN_SUBTLE,
-            )),
-            |ui| {
-                let n = self.telemetry.core_loads.len().min(12);
-                if n >= 6 {
-                    ui.columns(6, |cols| {
-                        for i in 0..6 {
-                            mini_core_bar(&mut cols[i], i, self.telemetry.core_loads[i]);
-                        }
-                    });
-                    if n >= 12 {
-                        ui.add_space(3.0);
-                        ui.columns(6, |cols| {
-                            for i in 6..12 {
-                                mini_core_bar(&mut cols[i - 6], i, self.telemetry.core_loads[i]);
-                            }
-                        });
-                    }
-                }
-            },
-        );
-
-        ui.add_space(6.0);
-
-        // 3. Realtime Thermal Waveform Plot Card
-        let thermal_badge = if self.telemetry.cpu_temp >= 80.0 {
-            ("🔥 HIGH THERMAL LOAD", RED_BRIGHT, RED_SUBTLE)
-        } else {
-            ("● NOMINAL THERMALS", GREEN_OK, GREEN_SUBTLE)
-        };
-
-        cyber_card(
-            ui,
-            "REALTIME THERMAL WAVEFORM",
-            Some("60s ROLLING SENSOR MATRIX"),
-            RED_PRIMARY,
-            Some(thermal_badge),
-            |ui| {
-                let cpu_pts: Vec<[f64; 2]> = self.cpu_history.iter().copied().collect();
-                let gpu_pts: Vec<[f64; 2]> = self.gpu_history.iter().copied().collect();
-                let nvme_pts: Vec<[f64; 2]> = self.nvme_history.iter().copied().collect();
-
-                let plot = Plot::new("thermal_plot")
-                    .legend(Legend::default())
-                    .height(145.0)
-                    .include_y(25.0)
-                    .include_y(95.0)
-                    .show_axes([false, true])
-                    .allow_zoom(false)
-                    .allow_drag(false)
-                    .allow_scroll(false);
-
-                plot.show(ui, |plot_ui| {
-                    plot_ui.line(
-                        Line::new("CPU Package (°C)", PlotPoints::new(cpu_pts))
-                            .color(RED_BRIGHT)
-                            .width(2.2),
-                    );
-                    plot_ui.line(
-                        Line::new("GPU / Thermal Zone (°C)", PlotPoints::new(gpu_pts))
-                            .color(AMBER_WARN)
-                            .width(1.8),
-                    );
-                    plot_ui.line(
-                        Line::new("NVMe SSD (°C)", PlotPoints::new(nvme_pts))
-                            .color(CYAN_INFO)
-                            .width(1.5),
-                    );
-                });
-            },
-        );
-
-        ui.add_space(6.0);
-
-        // 4. Power Profiles Deck
-        let active_badge = format!("ACTIVE: {}", self.active_profile.to_uppercase());
-        cyber_card(
-            ui,
-            "SYSTEM POWER PROFILES",
-            Some("DISPLAY REFRESH + TLP + EC FAN DISPATCH"),
+            "1-CLICK SYSTEM POWER PROFILES",
+            Some("Choose how your display, fans, and battery behave"),
             RED_PRIMARY,
             Some((&active_badge, RED_BRIGHT, RED_SUBTLE)),
             |ui| {
                 ui.columns(3, |cols| {
-                    let profiles = [
-                        ("extreme", "🔥 EXTREME PERFORMANCE", "144Hz • AC Full Power • Cooler Boost ON"),
-                        ("balance", "⚖️ BALANCED MATRIX", "48Hz • Smart Auto Fans • Daily Driver"),
-                        ("battery", "🔋 SUPER BATTERY SAVER", "48Hz • Silent Fans • Bluetooth Radio OFF"),
-                    ];
+                    if mode_selector_card(
+                        &mut cols[0],
+                        "🔥",
+                        "EXTREME GAMING",
+                        "🖥️ Screen: 144Hz Ultra Smooth",
+                        "🌀 Fans: 100% Cooler Boost",
+                        "⚡ Power: Maximum AC Speed",
+                        RED_BRIGHT,
+                        self.active_profile == "extreme",
+                    ) {
+                        self.active_profile = "extreme".into();
+                        self.cooler_boost = true;
+                        set_status("Applying EXTREME Gaming Profile...".into(), CYAN_INFO);
+                        let tx = self.tx.clone();
+                        thread::spawn(move || {
+                            let _ = tx.send(HardwareManager::apply_power_profile("extreme"));
+                        });
+                    }
 
-                    for (idx, (id, title, desc)) in profiles.iter().enumerate() {
-                        let is_selected = self.active_profile == *id;
-                        let fill = if is_selected { RED_CRIMSON } else { BG_CARD };
-                        let stroke = if is_selected {
-                            egui::Stroke::new(1.5, RED_BRIGHT)
-                        } else {
-                            egui::Stroke::new(1.0, BORDER_DARK)
-                        };
+                    if mode_selector_card(
+                        &mut cols[1],
+                        "⚖️",
+                        "BALANCED DAILY",
+                        "🖥️ Screen: 48Hz Power Saving",
+                        "🌀 Fans: Automatic Smart Curve",
+                        "⚡ Power: Balanced AC/Battery",
+                        CYAN_INFO,
+                        self.active_profile == "balance",
+                    ) {
+                        self.active_profile = "balance".into();
+                        self.cooler_boost = false;
+                        set_status("Applying BALANCED Daily Profile...".into(), CYAN_INFO);
+                        let tx = self.tx.clone();
+                        thread::spawn(move || {
+                            let _ = tx.send(HardwareManager::apply_power_profile("balance"));
+                        });
+                    }
 
-                        let btn_text = format!("{title}\n{desc}");
-                        let btn = egui::Button::new(
-                            egui::RichText::new(btn_text)
-                                .strong()
-                                .size(11.0)
-                                .color(if is_selected { egui::Color32::WHITE } else { TEXT_MAIN }),
-                        )
-                        .fill(fill)
-                        .stroke(stroke)
-                        .min_size(egui::vec2(cols[idx].available_width(), 46.0));
-
-                        if cols[idx].add(btn).clicked() {
-                            self.active_profile = (*id).to_string();
-                            self.cooler_boost = *id == "extreme";
-                            set_status(format!("Dispatching {} profile...", id.to_uppercase()), CYAN_INFO);
-                            let id_owned = (*id).to_string();
-                            let tx = self.tx.clone();
-                            thread::spawn(move || {
-                                let _ = tx.send(HardwareManager::apply_power_profile(&id_owned));
-                            });
-                        }
+                    if mode_selector_card(
+                        &mut cols[2],
+                        "🔋",
+                        "SUPER BATTERY",
+                        "🖥️ Screen: 48Hz Low Power",
+                        "🌀 Fans: Quiet / Silent Mode",
+                        "📡 Radio: Turns Bluetooth OFF",
+                        GREEN_OK,
+                        self.active_profile == "battery",
+                    ) {
+                        self.active_profile = "battery".into();
+                        self.cooler_boost = false;
+                        set_status("Applying SUPER BATTERY Profile...".into(), CYAN_INFO);
+                        let tx = self.tx.clone();
+                        thread::spawn(move || {
+                            let _ = tx.send(HardwareManager::apply_power_profile("battery"));
+                        });
                     }
                 });
             },
@@ -301,63 +242,88 @@ impl TabHardware {
 
         ui.add_space(6.0);
 
-        // 5. Dual Bottom Cards: Fan Controls & Battery Health Cap
+        // 3. Dual Cards: Fan Cooling Controls & Battery Health Cap
         ui.columns(2, |cols| {
-            // Left: Fan Controls
+            // Left: Fan Cooling Matrix
             let boost_badge = if self.cooler_boost {
-                ("BOOST ACTIVE", RED_BRIGHT, RED_SUBTLE)
+                ("MAX RPM ACTIVE", RED_BRIGHT, RED_SUBTLE)
             } else {
-                ("AUTO EC CURVE", TEXT_MUTED, BG_CARD)
+                ("AUTO COOLING", GREEN_OK, GREEN_SUBTLE)
             };
 
             cyber_card(
                 &mut cols[0],
-                "EC FAN MATRIX",
-                Some("MSI 16G41"),
+                "FAN COOLING CONTROLS",
+                Some("Override or automate laptop fans"),
                 RED_PRIMARY,
                 Some(boost_badge),
                 |ui| {
-                    ui.horizontal(|ui| {
-                        let boost_label = if self.cooler_boost {
-                            "❄️ COOLER BOOST: ON (MAX RPM)"
-                        } else {
-                            "❄️ COOLER BOOST: OFF"
-                        };
-                        let btn_color = if self.cooler_boost { RED_PRIMARY } else { BG_CARD };
-                        let btn = egui::Button::new(egui::RichText::new(boost_label).strong().size(11.5))
-                            .fill(btn_color)
-                            .min_size(egui::vec2(210.0, 34.0));
+                    let boost_title = if self.cooler_boost {
+                        "Cooler Boost is ON (100% Max Fan Speed)"
+                    } else {
+                        "Toggle Cooler Boost (100% Max Fan Speed)"
+                    };
+                    let boost_tag = if self.cooler_boost { ("ON", RED_BRIGHT) } else { ("OFF", TEXT_MUTED) };
 
-                        if ui.add(btn).clicked() {
-                            self.cooler_boost = !self.cooler_boost;
-                            let target = self.cooler_boost;
-                            set_status(
-                                format!("Setting Cooler Boost {}...", if target { "ON" } else { "OFF" }),
-                                CYAN_INFO,
-                            );
-                            let tx = self.tx.clone();
-                            thread::spawn(move || {
-                                let _ = tx.send(HardwareManager::set_cooler_boost(target));
-                            });
-                        }
+                    if action_card_button(
+                        ui,
+                        "❄️",
+                        boost_title,
+                        "Forces both CPU and GPU fans to spin at maximum RPM immediately",
+                        Some(boost_tag),
+                        RED_BRIGHT,
+                        self.cooler_boost,
+                    ) {
+                        self.cooler_boost = !self.cooler_boost;
+                        let target = self.cooler_boost;
+                        set_status(
+                            format!("Setting Cooler Boost {}...", if target { "ON" } else { "OFF" }),
+                            CYAN_INFO,
+                        );
+                        let tx = self.tx.clone();
+                        thread::spawn(move || {
+                            let _ = tx.send(HardwareManager::set_cooler_boost(target));
+                        });
+                    }
 
-                        ui.checkbox(
-                            &mut self.smart_boost,
-                            egui::RichText::new("🤖 Smart (>80°C)").size(11.0).color(TEXT_MAIN),
-                        )
-                        .on_hover_text("Automatically engages Cooler Boost when CPU or GPU reaches 80°C");
-                    });
+                    ui.add_space(4.0);
 
-                    ui.add_space(6.0);
+                    let smart_tag = if self.smart_boost {
+                        ("ENABLED", GREEN_OK)
+                    } else {
+                        ("DISABLED", TEXT_DIM)
+                    };
+                    if action_card_button(
+                        ui,
+                        "🤖",
+                        "Auto Smart Thermostat (80°C Trigger)",
+                        "Automatically turns ON Cooler Boost if CPU or GPU reaches 80°C",
+                        Some(smart_tag),
+                        CYAN_INFO,
+                        self.smart_boost,
+                    ) {
+                        self.smart_boost = !self.smart_boost;
+                        set_status(
+                            format!(
+                                "Smart Thermostat {}",
+                                if self.smart_boost { "ENABLED" } else { "DISABLED" }
+                            ),
+                            GREEN_OK,
+                        );
+                    }
+
+                    ui.add_space(4.0);
 
                     ui.columns(2, |sub_cols| {
-                        if sub_cols[0]
-                            .add_sized(
-                                [sub_cols[0].available_width(), 30.0],
-                                egui::Button::new(egui::RichText::new("📈 Apply Custom Curve").size(11.0)),
-                            )
-                            .clicked()
-                        {
+                        if action_card_button(
+                            &mut sub_cols[0],
+                            "📈",
+                            "Custom Fan Curve",
+                            "Load tuned MSI 16G41 table",
+                            None,
+                            RED_PRIMARY,
+                            false,
+                        ) {
                             set_status("Applying ISW custom curve (16G41)...".into(), CYAN_INFO);
                             let tx = self.tx.clone();
                             thread::spawn(move || {
@@ -365,13 +331,15 @@ impl TabHardware {
                             });
                         }
 
-                        if sub_cols[1]
-                            .add_sized(
-                                [sub_cols[1].available_width(), 30.0],
-                                egui::Button::new(egui::RichText::new("🔄 Reset BIOS Auto").size(11.0)),
-                            )
-                            .clicked()
-                        {
+                        if action_card_button(
+                            &mut sub_cols[1],
+                            "🔄",
+                            "Reset BIOS Auto",
+                            "Return fans to default curve",
+                            None,
+                            GREEN_OK,
+                            false,
+                        ) {
                             self.cooler_boost = false;
                             set_status("Resetting fans to BIOS auto...".into(), CYAN_INFO);
                             let tx = self.tx.clone();
@@ -384,58 +352,168 @@ impl TabHardware {
             );
 
             // Right: Battery Health Cap
-            let cap_badge = format!("CAP: {}%", self.battery_limit);
+            let cap_badge = format!("CHARGE CEILING: {}%", self.battery_limit);
             cyber_card(
                 &mut cols[1],
-                "BATTERY LONGEVITY CAP",
-                Some("EC CHARGE LIMIT"),
+                "BATTERY LIFESPAN PROTECTION",
+                Some("Stop charging early to prevent battery wear"),
                 GREEN_OK,
                 Some((&cap_badge, GREEN_OK, GREEN_SUBTLE)),
                 |ui| {
-                    ui.label(
-                        egui::RichText::new("Limits AC charge ceiling in the Embedded Controller to reduce Li-ion cell wear:")
-                            .size(10.0)
-                            .color(TEXT_MUTED),
-                    );
-                    ui.add_space(6.0);
-
                     ui.columns(3, |b_cols| {
-                        let caps = [
-                            (60u32, "🛡️ 60% CAP", "Max Lifespan"),
-                            (80u32, "⚖️ 80% CAP", "Balanced Daily"),
-                            (100u32, "⚡ 100% CAP", "Full Travel"),
-                        ];
+                        if mode_selector_card(
+                            &mut b_cols[0],
+                            "🛡️",
+                            "60% MAX LIFE",
+                            "• Best if always plugged in",
+                            "• Minimizes cell voltage stress",
+                            "• Doubles battery lifespan",
+                            GREEN_OK,
+                            self.battery_limit == 60,
+                        ) {
+                            self.battery_limit = 60;
+                            set_status("Setting battery charge limit to 60%...".into(), CYAN_INFO);
+                            let tx = self.tx.clone();
+                            thread::spawn(move || {
+                                let _ = tx.send(HardwareManager::set_battery_limit(60));
+                            });
+                        }
 
-                        for (idx, (pct, title, sub)) in caps.iter().enumerate() {
-                            let is_active = self.battery_limit == *pct;
-                            let fill = if is_active { RED_CRIMSON } else { BG_CARD };
-                            let stroke = if is_active {
-                                egui::Stroke::new(1.5, RED_BRIGHT)
-                            } else {
-                                egui::Stroke::new(1.0, BORDER_DARK)
-                            };
+                        if mode_selector_card(
+                            &mut b_cols[1],
+                            "⚖️",
+                            "80% BALANCED",
+                            "• Ideal for mixed daily use",
+                            "• Prevents 100% heat wear",
+                            "• Good portable runtime",
+                            CYAN_INFO,
+                            self.battery_limit == 80,
+                        ) {
+                            self.battery_limit = 80;
+                            set_status("Setting battery charge limit to 80%...".into(), CYAN_INFO);
+                            let tx = self.tx.clone();
+                            thread::spawn(move || {
+                                let _ = tx.send(HardwareManager::set_battery_limit(80));
+                            });
+                        }
 
-                            let btn = egui::Button::new(
-                                egui::RichText::new(format!("{title}\n{sub}"))
-                                    .strong()
-                                    .size(10.5)
-                                    .color(if is_active { egui::Color32::WHITE } else { TEXT_MAIN }),
-                            )
-                            .fill(fill)
-                            .stroke(stroke)
-                            .min_size(egui::vec2(b_cols[idx].available_width(), 44.0));
-
-                            if b_cols[idx].add(btn).clicked() {
-                                self.battery_limit = *pct;
-                                let target_pct = *pct;
-                                set_status(format!("Setting EC battery cap to {target_pct}%..."), CYAN_INFO);
-                                let tx = self.tx.clone();
-                                thread::spawn(move || {
-                                    let _ = tx.send(HardwareManager::set_battery_limit(target_pct));
-                                });
-                            }
+                        if mode_selector_card(
+                            &mut b_cols[2],
+                            "⚡",
+                            "100% FULL TRIP",
+                            "• Charges battery to 100%",
+                            "• Maximum unplugged hours",
+                            "• Use before travel",
+                            AMBER_WARN,
+                            self.battery_limit == 100,
+                        ) {
+                            self.battery_limit = 100;
+                            set_status("Setting battery charge limit to 100%...".into(), CYAN_INFO);
+                            let tx = self.tx.clone();
+                            thread::spawn(move || {
+                                let _ = tx.send(HardwareManager::set_battery_limit(100));
+                            });
                         }
                     });
+
+                    ui.add_space(6.0);
+                    egui::Frame::new()
+                        .fill(BG_VOID)
+                        .corner_radius(6)
+                        .inner_margin(8)
+                        .show(ui, |ui| {
+                            ui.label(
+                                egui::RichText::new(
+                                    "ℹ️ Tip: Keeping a lithium-ion battery at 60%–80% while on AC power prevents chemical degradation and swelling.",
+                                )
+                                .size(9.5)
+                                .color(TEXT_MUTED),
+                            );
+                        });
+                },
+            );
+        });
+
+        ui.add_space(6.0);
+
+        // 4. Realtime Thermal Waveform & 12-Core Activity
+        ui.columns(2, |cols| {
+            cyber_card(
+                &mut cols[0],
+                "TEMPERATURE HISTORY (LAST 60 SECONDS)",
+                Some("Live sensor graph"),
+                RED_PRIMARY,
+                None,
+                |ui| {
+                    let cpu_pts: Vec<[f64; 2]> = self.cpu_history.iter().copied().collect();
+                    let gpu_pts: Vec<[f64; 2]> = self.gpu_history.iter().copied().collect();
+                    let nvme_pts: Vec<[f64; 2]> = self.nvme_history.iter().copied().collect();
+
+                    let plot = Plot::new("thermal_plot")
+                        .legend(Legend::default())
+                        .height(135.0)
+                        .include_y(25.0)
+                        .include_y(95.0)
+                        .show_axes([false, true])
+                        .allow_zoom(false)
+                        .allow_drag(false)
+                        .allow_scroll(false);
+
+                    plot.show(ui, |plot_ui| {
+                        plot_ui.line(
+                            Line::new("CPU (°C)", PlotPoints::new(cpu_pts))
+                                .color(RED_BRIGHT)
+                                .width(2.2),
+                        );
+                        plot_ui.line(
+                            Line::new("GPU/Zone (°C)", PlotPoints::new(gpu_pts))
+                                .color(AMBER_WARN)
+                                .width(1.8),
+                        );
+                        plot_ui.line(
+                            Line::new("NVMe SSD (°C)", PlotPoints::new(nvme_pts))
+                                .color(CYAN_INFO)
+                                .width(1.5),
+                        );
+                    });
+                },
+            );
+
+            cyber_card(
+                &mut cols[1],
+                "12-CORE PROCESSOR ACTIVITY",
+                Some("Per-thread load on Intel Core i5-10500H"),
+                CYAN_INFO,
+                None,
+                |ui| {
+                    let n = self.telemetry.core_loads.len().min(12);
+                    if n >= 6 {
+                        ui.columns(3, |c| {
+                            for i in 0..3 {
+                                mini_core_bar(&mut c[i], i, self.telemetry.core_loads[i]);
+                            }
+                        });
+                        ui.add_space(3.0);
+                        ui.columns(3, |c| {
+                            for i in 3..6 {
+                                mini_core_bar(&mut c[i - 3], i, self.telemetry.core_loads[i]);
+                            }
+                        });
+                        if n >= 12 {
+                            ui.add_space(3.0);
+                            ui.columns(3, |c| {
+                                for i in 6..9 {
+                                    mini_core_bar(&mut c[i - 6], i, self.telemetry.core_loads[i]);
+                                }
+                            });
+                            ui.add_space(3.0);
+                            ui.columns(3, |c| {
+                                for i in 9..12 {
+                                    mini_core_bar(&mut c[i - 9], i, self.telemetry.core_loads[i]);
+                                }
+                            });
+                        }
+                    }
                 },
             );
         });

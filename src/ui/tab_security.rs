@@ -40,49 +40,50 @@ impl TabSecurity {
             }
         }
 
-        ui.add_space(4.0);
+        legend_strip(
+            ui,
+            "Manage UFW inbound firewall rules, inspect active local IP addresses, and fix Waydroid container internet.",
+            &[
+                ("Open / Standard", GREEN_OK),
+                ("Isolated (Inbound Blocked)", RED_BRIGHT),
+            ],
+        );
+
+        ui.add_space(6.0);
 
         let badge = if self.is_isolated {
             ("🛡️ ISOLATION ACTIVE", RED_BRIGHT, RED_SUBTLE)
         } else {
-            ("🔓 OPEN / PENTEST READY", GREEN_OK, GREEN_SUBTLE)
+            ("🔓 OPEN / INBOUND ALLOWED", GREEN_OK, GREEN_SUBTLE)
         };
 
-        // 1. Hero Status Card
+        // 1. Firewall Shield Status & Action Card
         cyber_card(
             ui,
-            "🛡️ NETWORK ISOLATION MATRIX",
-            Some("UFW HOST DEFENSE FIREWALL"),
+            "🛡️ UFW FIREWALL & NETWORK ISOLATION",
+            Some("Control whether external devices on the network can connect to this laptop"),
             if self.is_isolated { RED_BRIGHT } else { GREEN_OK },
             Some(badge),
             |ui| {
-                ui.label(
-                    egui::RichText::new(
-                        "Provides single-click network isolation by enforcing default-deny inbound packet filtering via UFW.",
+                let (icon, title, sub, tag, accent) = if self.is_isolated {
+                    (
+                        "🔓",
+                        "Disable Network Isolation (Restore Open Inbound Traffic)",
+                        "Allows incoming connections for local web servers, listeners, and file transfers",
+                        ("CLICK TO OPEN", GREEN_OK),
+                        GREEN_OK,
                     )
-                    .size(11.0)
-                    .color(TEXT_MUTED),
-                );
-
-                ui.add_space(8.0);
-
-                let btn_text = if self.is_isolated {
-                    "🔓 DISABLE ISOLATION (Restore Open Inbound / Pentest Mode)"
                 } else {
-                    "🔒 ENGAGE ISOLATION (Block Inbound Traffic / Hardened Defense)"
+                    (
+                        "🔒",
+                        "Enable Network Isolation (Block All Incoming Connections)",
+                        "Hardens the laptop on untrusted networks by dropping unsolicited inbound packets",
+                        ("CLICK TO LOCK", RED_BRIGHT),
+                        RED_PRIMARY,
+                    )
                 };
-                let btn_fill = if self.is_isolated { GREEN_OK } else { RED_PRIMARY };
 
-                let toggle_btn = egui::Button::new(
-                    egui::RichText::new(btn_text)
-                        .strong()
-                        .size(12.5)
-                        .color(egui::Color32::WHITE),
-                )
-                .fill(btn_fill)
-                .min_size(egui::vec2(ui.available_width(), 42.0));
-
-                if ui.add(toggle_btn).clicked() {
+                if action_card_button(ui, icon, title, sub, Some(tag), accent, true) {
                     let target = !self.is_isolated;
                     match SecurityManager::toggle_isolation(target) {
                         Ok(new_state) => {
@@ -105,16 +106,16 @@ impl TabSecurity {
 
         ui.add_space(6.0);
 
-        // 2. Dual Tactical Row: LHOST Network Matrix + Waydroid Bridge Ops
+        // 2. Dual Row: Network Interfaces & Waydroid Container Bridge
         ui.columns(2, |cols| {
-            // Left: Pentest LHOST & Active Listeners Matrix
+            // Left: Active Network Adapters & Local IPs
             cyber_card(
                 &mut cols[0],
-                "🎯 PENTEST LHOST & PORT MATRIX",
-                Some("LIVE INTERFACES"),
+                "🌐 ACTIVE NETWORK ADAPTERS & LOCAL IPs",
+                Some("Click Copy IP to use an address in your tools"),
                 CYAN_INFO,
                 Some((
-                    &format!("{} IFACES", self.interfaces.len()),
+                    &format!("{} ADAPTERS", self.interfaces.len()),
                     CYAN_INFO,
                     CYAN_SUBTLE,
                 )),
@@ -123,8 +124,9 @@ impl TabSecurity {
                         let is_up = iface.state == "UP";
                         egui::Frame::new()
                             .fill(BG_CARD)
-                            .corner_radius(5)
-                            .inner_margin(egui::Margin::symmetric(8, 5))
+                            .stroke(egui::Stroke::new(1.0, BORDER_SUBTLE))
+                            .corner_radius(6)
+                            .inner_margin(egui::Margin::symmetric(10, 6))
                             .show(ui, |ui| {
                                 ui.horizontal(|ui| {
                                     let dot_color = if is_up { GREEN_OK } else { TEXT_DIM };
@@ -133,13 +135,13 @@ impl TabSecurity {
                                         egui::RichText::new(format!("{:<8}", iface.name))
                                             .monospace()
                                             .strong()
-                                            .size(11.0)
+                                            .size(11.5)
                                             .color(TEXT_MAIN),
                                     );
                                     ui.label(
                                         egui::RichText::new(&iface.ip_cidr)
                                             .monospace()
-                                            .size(10.5)
+                                            .size(11.0)
                                             .color(CYAN_INFO),
                                     );
 
@@ -147,47 +149,46 @@ impl TabSecurity {
                                         if ui
                                             .add(
                                                 egui::Button::new(
-                                                    egui::RichText::new("📋 LHOST")
+                                                    egui::RichText::new("📋 Copy IP")
                                                         .strong()
-                                                        .size(9.5)
+                                                        .size(10.0)
                                                         .color(TEXT_MAIN),
                                                 )
                                                 .fill(BG_ELEVATED)
-                                                .min_size(egui::vec2(64.0, 20.0)),
+                                                .min_size(egui::vec2(74.0, 22.0)),
                                             )
                                             .on_hover_text(format!("Copy {} to clipboard", iface.clean_ip))
                                             .clicked()
                                         {
                                             ui.ctx().copy_text(iface.clean_ip.clone());
                                             set_status(
-                                                format!("Copied LHOST IP {} ({})", iface.clean_ip, iface.name),
+                                                format!("Copied IP {} ({})", iface.clean_ip, iface.name),
                                                 GREEN_OK,
                                             );
                                         }
                                     });
                                 });
                             });
-                        ui.add_space(2.0);
+                        ui.add_space(3.0);
                     }
 
                     ui.add_space(4.0);
                     ui.separator();
                     ui.add_space(4.0);
 
-                    // Active Listening TCP Ports
                     let ports_str = if self.listening_ports.is_empty() {
-                        "None detected".to_string()
+                        "None".to_string()
                     } else {
                         self.listening_ports
                             .iter()
-                            .map(|p| format!(":{p}"))
+                            .map(|p| format!("Port {p}"))
                             .collect::<Vec<_>>()
-                            .join("  ")
+                            .join("  •  ")
                     };
 
                     ui.horizontal_wrapped(|ui| {
                         ui.label(
-                            egui::RichText::new("Active TCP Listeners:")
+                            egui::RichText::new("Open Local TCP Ports:")
                                 .strong()
                                 .size(10.0)
                                 .color(TEXT_MUTED),
@@ -202,73 +203,66 @@ impl TabSecurity {
                 },
             );
 
-            // Right: Waydroid & Container Bridge Tactical Ops
+            // Right: Waydroid Android Container & Network Fix
             cyber_card(
                 &mut cols[1],
-                "🤖 WAYDROID & BRIDGE OPS",
-                Some("DOCKER NAT FIX"),
+                "🤖 WAYDROID ANDROID CONTAINER TOOLS",
+                Some("Fix Waydroid internet or launch Android session"),
                 GREEN_OK,
-                Some(("KALI WAYLAND", GREEN_OK, GREEN_SUBTLE)),
+                Some(("WAYLAND BRIDGE", GREEN_OK, GREEN_SUBTLE)),
                 |ui| {
-                    ui.label(
-                        egui::RichText::new(
-                            "Resolves Docker FORWARD-DROP conflicts so Waydroid Android containers retain full internet & DNS access:",
-                        )
-                        .size(10.0)
-                        .color(TEXT_MUTED),
-                    );
-
-                    ui.add_space(6.0);
-
-                    let fix_btn = egui::Button::new(
-                        egui::RichText::new("⚡ INJECT WAYDROID DOCKER/NAT BRIDGE (pkexec)")
-                            .strong()
-                            .size(11.0)
-                            .color(egui::Color32::WHITE),
-                    )
-                    .fill(RED_PRIMARY)
-                    .min_size(egui::vec2(ui.available_width(), 34.0));
-
-                    if ui.add(fix_btn).clicked() {
-                        set_status("Injecting Waydroid DOCKER-USER & MASQUERADE rules...".into(), CYAN_INFO);
+                    if action_card_button(
+                        ui,
+                        "⚡",
+                        "Fix Waydroid Internet Bridge",
+                        "Applies Docker FORWARD & NAT rules so Android has internet",
+                        Some(("FIX NET", GREEN_OK)),
+                        RED_PRIMARY,
+                        false,
+                    ) {
+                        set_status("Applying Waydroid Docker/NAT bridge rules...".into(), CYAN_INFO);
                         let tx = self.tx.clone();
                         thread::spawn(move || {
                             let _ = tx.send(SecurityManager::inject_waydroid_bridge());
                         });
                     }
 
-                    ui.add_space(6.0);
+                    ui.add_space(4.0);
 
-                    ui.columns(2, |w_cols| {
-                        if w_cols[0]
-                            .add_sized(
-                                [w_cols[0].available_width(), 30.0],
-                                egui::Button::new(egui::RichText::new("🚀 Start Waydroid UI").size(10.5)),
-                            )
-                            .clicked()
-                        {
-                            let _ = Command::new("waydroid").arg("show-full-ui").spawn();
-                            set_status("Launched Waydroid Full UI".into(), GREEN_OK);
-                        }
+                    if action_card_button(
+                        ui,
+                        "🚀",
+                        "Launch Waydroid Full Android UI",
+                        "Opens the Android window on your Kali Wayland desktop",
+                        None,
+                        GREEN_OK,
+                        false,
+                    ) {
+                        let _ = Command::new("waydroid").arg("show-full-ui").spawn();
+                        set_status("Launched Waydroid Full UI".into(), GREEN_OK);
+                    }
 
-                        if w_cols[1]
-                            .add_sized(
-                                [w_cols[1].available_width(), 30.0],
-                                egui::Button::new(egui::RichText::new("🛑 Stop Session").size(10.5)),
-                            )
-                            .clicked()
-                        {
-                            let _ = Command::new("waydroid").args(["session", "stop"]).spawn();
-                            set_status("Stopped Waydroid session".into(), AMBER_WARN);
-                        }
-                    });
+                    ui.add_space(4.0);
+
+                    if action_card_button(
+                        ui,
+                        "🛑",
+                        "Stop Waydroid Background Session",
+                        "Shuts down the Android container to free up RAM",
+                        None,
+                        AMBER_WARN,
+                        false,
+                    ) {
+                        let _ = Command::new("waydroid").args(["session", "stop"]).spawn();
+                        set_status("Stopped Waydroid session".into(), AMBER_WARN);
+                    }
                 },
             );
         });
 
         ui.add_space(6.0);
 
-        // 3. Pentesting Operational Impact Advisory Card
+        // 3. Operational Impact Advisory Card
         egui::Frame::new()
             .fill(BG_PANEL)
             .stroke(egui::Stroke::new(1.0, AMBER_WARN.gamma_multiply(0.7)))
@@ -277,7 +271,7 @@ impl TabSecurity {
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.label(
-                        egui::RichText::new("⚠️ PENTESTING OPERATIONAL IMPACT ADVISORY")
+                        egui::RichText::new("⚠️ WHAT NETWORK ISOLATION AFFECTS (IMPORTANT FOR LAB WORK)")
                             .strong()
                             .size(11.5)
                             .color(AMBER_WARN),
@@ -290,15 +284,15 @@ impl TabSecurity {
                 ui.add_space(4.0);
                 ui.label(
                     egui::RichText::new(
-                        "• Enabling Isolation enforces default-deny incoming, which blocks: Reverse shells (nc/pwncat), Metasploit multi/handler, Responder LLMNR/NBT-NS poisoners, and python3 -m http.server.",
+                        "• When Isolation is ENABLED, UFW blocks all incoming connections. This will block inbound listeners (nc/socat), Metasploit handlers, Responder, and local HTTP servers (python3 -m http.server).",
                     )
                     .size(10.0)
                     .color(TEXT_MUTED),
                 );
                 ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new("• Emergency CLI Revert:").strong().size(10.0).color(TEXT_MAIN));
+                    ui.label(egui::RichText::new("• Terminal Revert Command:").strong().size(10.0).color(TEXT_MAIN));
                     ui.label(egui::RichText::new("pkexec ufw disable").monospace().size(10.0).color(CYAN_INFO));
-                    if ui.small_button("📋 Copy").clicked() {
+                    if ui.small_button("📋 Copy Command").clicked() {
                         ui.ctx().copy_text("pkexec ufw disable".into());
                     }
                 });

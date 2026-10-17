@@ -35,7 +35,7 @@ impl ZaneMegApp {
             tab_headset: TabHeadset::new(),
             tab_security: TabSecurity::new(),
             tab_idevice: TabIDevice::new(),
-            status_message: "ZaneMegApp Core Matrix Online".into(),
+            status_message: "ZaneMegApp Visual Matrix Ready — Select any module on the left or press F1–F6".into(),
             status_color: GREEN_OK,
             last_telemetry_tick: Instant::now(),
         };
@@ -61,81 +61,8 @@ impl eframe::App for ZaneMegApp {
             self.tab_security.refresh_state();
         }
 
-        // Request repaint every 500ms to keep animations and graphs fluid
-        ui.ctx().request_repaint_after(Duration::from_millis(500));
-
-        // ═══════════════════════════════════════════════════════════════════
-        //  1. TOP CYBER-DECK TELEMETRY HUD HEADER
-        // ═══════════════════════════════════════════════════════════════════
-        egui::Frame::new()
-            .fill(BG_PANEL)
-            .stroke(egui::Stroke::new(1.0, BORDER_DARK))
-            .inner_margin(egui::Margin::symmetric(14, 8))
-            .show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    // Logo & Rig Identification
-                    ui.label(
-                        egui::RichText::new("⚡ ZANE MEGAPP")
-                            .strong()
-                            .size(16.5)
-                            .color(RED_PRIMARY),
-                    );
-                    ui.label(
-                        egui::RichText::new("V2.5 CYBER-DECK // MSI GF65 THIN")
-                            .monospace()
-                            .size(9.5)
-                            .color(TEXT_MUTED),
-                    );
-
-                    // Right-aligned Mini-HUD Telemetry Pills
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        // Shield Status Pill
-                        let (s_text, s_fg, s_bg) = if self.tab_security.is_isolated {
-                            ("🛡️ ISOLATED", RED_BRIGHT, RED_SUBTLE)
-                        } else {
-                            ("🛡️ OPEN", GREEN_OK, GREEN_SUBTLE)
-                        };
-                        status_pill(ui, s_text, s_fg, s_bg);
-
-                        // Battery Pill
-                        let bat_text = format!("⚡ {}%", self.tab_hardware.telemetry.battery_pct);
-                        status_pill(ui, &bat_text, TEXT_MAIN, BG_CARD);
-
-                        // NVMe Disk % Pill
-                        let disk_pct = self.tab_cleaner.resources.disk_percent;
-                        let disk_text = format!("NVMe: {:.0}%", disk_pct);
-                        status_pill(ui, &disk_text, CYAN_INFO, CYAN_SUBTLE);
-
-                        // RAM % Pill
-                        let ram_pct = self.tab_cleaner.resources.ram_percent;
-                        let (ram_fg, ram_bg) = if ram_pct >= 85.0 {
-                            (RED_BRIGHT, RED_SUBTLE)
-                        } else if ram_pct >= 65.0 {
-                            (AMBER_WARN, AMBER_SUBTLE)
-                        } else {
-                            (GREEN_OK, GREEN_SUBTLE)
-                        };
-                        status_pill(ui, &format!("RAM: {:.0}%", ram_pct), ram_fg, ram_bg);
-
-                        // CPU Temp & Load Pill
-                        let cpu_t = self.tab_hardware.telemetry.cpu_temp;
-                        let cpu_load = self.tab_hardware.telemetry.cpu_load_pct;
-                        let (cpu_fg, cpu_bg) = if cpu_t >= 80.0 {
-                            (RED_BRIGHT, RED_SUBTLE)
-                        } else if cpu_t >= 65.0 {
-                            (AMBER_WARN, AMBER_SUBTLE)
-                        } else {
-                            (GREEN_OK, GREEN_SUBTLE)
-                        };
-                        status_pill(
-                            ui,
-                            &format!("CPU: {:.0}°C ({:.0}%)", cpu_t, cpu_load),
-                            cpu_fg,
-                            cpu_bg,
-                        );
-                    });
-                });
-            });
+        // Request repaint every 120ms for smooth hover/pulse animations and graphs
+        ui.ctx().request_repaint_after(Duration::from_millis(120));
 
         // Flight Deck Keyboard Shortcuts (F1 - F6)
         ui.input(|i| {
@@ -155,108 +82,274 @@ impl eframe::App for ZaneMegApp {
         });
 
         // ═══════════════════════════════════════════════════════════════════
-        //  2. CYBER NAVIGATION RAIL // SEGMENTED TAB SELECTOR
+        //  1. TOP TELEMETRY RIBBON HEADER
         // ═══════════════════════════════════════════════════════════════════
         egui::Frame::new()
-            .fill(BG_VOID)
-            .inner_margin(egui::Margin::symmetric(8, 4))
+            .fill(BG_PANEL)
+            .stroke(egui::Stroke::new(1.0, BORDER_DARK))
+            .inner_margin(egui::Margin::symmetric(16, 10))
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
-                    let tabs = [
-                        (AppTab::Hardware, "F1", "⚡ HARDWARE", None),
-                        (
-                            AppTab::Controller,
-                            "F2",
-                            "🎮 CONTROLLER",
-                            self.tab_controller.running_pid.map(|p| format!("PID {p}")),
-                        ),
-                        (
-                            AppTab::Cleaner,
-                            "F3",
-                            "🧹 CLEANER",
-                            if self.tab_cleaner.is_running {
-                                Some("BUSY".to_string())
-                            } else {
-                                None
-                            },
-                        ),
-                        (AppTab::Headset, "F4", "🎧 HEADSET", None),
-                        (
-                            AppTab::Security,
-                            "F5",
-                            "🛡️ SECURITY & OPS",
-                            if self.tab_security.is_isolated {
-                                Some("LOCKED".to_string())
-                            } else {
-                                None
-                            },
-                        ),
-                        (AppTab::IDevice, "F6", "📱 iDEVICE", None),
-                    ];
+                    let pulse = pulse_factor(ui.ctx());
+                    let (dot_r, _) = ui.allocate_exact_size(egui::vec2(10.0, 10.0), egui::Sense::hover());
+                    ui.painter().circle_filled(dot_r.center(), 4.5, RED_BRIGHT.gamma_multiply(pulse));
 
-                    for (tab, hk, label, tag) in tabs {
-                        let is_active = self.current_tab == tab;
-                        let bg_color = if is_active { RED_CRIMSON } else { BG_PANEL };
-                        let text_color = if is_active { egui::Color32::WHITE } else { TEXT_MAIN };
-                        let stroke = if is_active {
-                            egui::Stroke::new(1.2, RED_BRIGHT)
+                    ui.label(
+                        egui::RichText::new("⚡ ZANE MEGAPP")
+                            .strong()
+                            .size(17.0)
+                            .color(egui::Color32::WHITE),
+                    );
+                    ui.label(
+                        egui::RichText::new("V3.0 VISUAL COMMAND DECK  •  MSI GF65 THIN")
+                            .size(10.5)
+                            .color(TEXT_MUTED),
+                    );
+
+                    // Right-aligned Self-Explanatory Live Telemetry Pills
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let (s_text, s_fg, s_bg) = if self.tab_security.is_isolated {
+                            ("🛡️ Firewall: Isolated", RED_BRIGHT, RED_SUBTLE)
                         } else {
-                            egui::Stroke::new(1.0, BORDER_DARK)
+                            ("🛡️ Firewall: Open", GREEN_OK, GREEN_SUBTLE)
                         };
+                        status_pill(ui, s_text, s_fg, s_bg);
 
-                        let btn_content = if let Some(ref t) = tag {
-                            format!("[{hk}] {label} ({t})")
+                        let bat_text = format!(
+                            "🔋 Battery: {}% ({})",
+                            self.tab_hardware.telemetry.battery_pct,
+                            self.tab_hardware.telemetry.battery_status
+                        );
+                        status_pill(ui, &bat_text, TEXT_MAIN, BG_CARD);
+
+                        let ram_pct = self.tab_cleaner.resources.ram_percent;
+                        let (ram_fg, ram_bg) = if ram_pct >= 85.0 {
+                            (RED_BRIGHT, RED_SUBTLE)
+                        } else if ram_pct >= 65.0 {
+                            (AMBER_WARN, AMBER_SUBTLE)
                         } else {
-                            format!("[{hk}] {label}")
+                            (GREEN_OK, GREEN_SUBTLE)
                         };
+                        status_pill(
+                            ui,
+                            &format!("🧠 Memory: {:.0}% Used", ram_pct),
+                            ram_fg,
+                            ram_bg,
+                        );
 
-                        let btn = egui::Button::new(
-                            egui::RichText::new(btn_content)
-                                .strong()
-                                .size(11.0)
-                                .color(text_color),
-                        )
-                        .fill(bg_color)
-                        .stroke(stroke)
-                        .min_size(egui::vec2(0.0, 30.0));
-
-                        if ui.add(btn).clicked() {
-                            self.current_tab = tab;
-                        }
-                    }
+                        let cpu_t = self.tab_hardware.telemetry.cpu_temp;
+                        let cpu_load = self.tab_hardware.telemetry.cpu_load_pct;
+                        let (cpu_fg, cpu_bg) = if cpu_t >= 80.0 {
+                            (RED_BRIGHT, RED_SUBTLE)
+                        } else if cpu_t >= 65.0 {
+                            (AMBER_WARN, AMBER_SUBTLE)
+                        } else {
+                            (GREEN_OK, GREEN_SUBTLE)
+                        };
+                        status_pill(
+                            ui,
+                            &format!("🌡️ CPU: {:.0}°C ({:.0}% Load)", cpu_t, cpu_load),
+                            cpu_fg,
+                            cpu_bg,
+                        );
+                    });
                 });
             });
 
-        ui.add_space(2.0);
+        ui.add_space(4.0);
 
         // ═══════════════════════════════════════════════════════════════════
-        //  3. CENTRAL SCROLLABLE TAB VIEWPORT
+        //  2. MAIN WIDESCREEN SPLIT: LEFT NAVIGATION SIDEBAR + MAIN VIEWPORT
         // ═══════════════════════════════════════════════════════════════════
         let mut status_change: Option<(String, egui::Color32)> = None;
         let mut status_cb = |msg: String, color: egui::Color32| {
             status_change = Some((msg, color));
         };
 
-        egui::ScrollArea::vertical()
-            .id_salt("main_viewport_scroll")
-            .auto_shrink([false, false])
-            .show(ui, |ui| {
-                match self.current_tab {
-                    AppTab::Hardware => self.tab_hardware.ui(ui, &mut status_cb),
-                    AppTab::Controller => self.tab_controller.ui(ui, &mut status_cb),
-                    AppTab::Cleaner => self.tab_cleaner.ui(ui, &mut status_cb),
-                    AppTab::Headset => self.tab_headset.ui(ui, &mut status_cb),
-                    AppTab::Security => self.tab_security.ui(ui, &mut status_cb),
-                    AppTab::IDevice => self.tab_idevice.ui(ui, &mut status_cb),
-                }
-            });
+        let avail_h = (ui.available_height() - 36.0).max(400.0);
+
+        ui.horizontal_top(|ui| {
+            // Left Vertical Navigation Sidebar
+            egui::Frame::new()
+                .fill(BG_PANEL)
+                .stroke(egui::Stroke::new(1.0, BORDER_DARK))
+                .corner_radius(8)
+                .inner_margin(10)
+                .show(ui, |ui| {
+                    ui.set_width(225.0);
+                    ui.set_min_height(avail_h - 20.0);
+
+                    ui.label(
+                        egui::RichText::new("CONTROL MODULES")
+                            .strong()
+                            .size(10.0)
+                            .color(TEXT_DIM),
+                    );
+                    ui.add_space(4.0);
+
+                    let cpu_badge = format!("{:.0}°C", self.tab_hardware.telemetry.cpu_temp);
+                    let cpu_col = if self.tab_hardware.telemetry.cpu_temp >= 80.0 {
+                        RED_BRIGHT
+                    } else {
+                        GREEN_OK
+                    };
+                    if nav_sidebar_item(
+                        ui,
+                        "F1",
+                        "⚡",
+                        "Hardware & Cooling",
+                        "Fans, Temps & Power Modes",
+                        Some((&cpu_badge, cpu_col)),
+                        self.current_tab == AppTab::Hardware,
+                    ) {
+                        self.current_tab = AppTab::Hardware;
+                    }
+
+                    ui.add_space(4.0);
+
+                    let (ctrl_txt, ctrl_col) = if self.tab_controller.running_pid.is_some() {
+                        ("ONLINE", GREEN_OK)
+                    } else {
+                        ("READY", TEXT_DIM)
+                    };
+                    if nav_sidebar_item(
+                        ui,
+                        "F2",
+                        "🎮",
+                        "Controller Cockpit",
+                        "Gamepad, LEDs & Haptics",
+                        Some((ctrl_txt, ctrl_col)),
+                        self.current_tab == AppTab::Controller,
+                    ) {
+                        self.current_tab = AppTab::Controller;
+                    }
+
+                    ui.add_space(4.0);
+
+                    let ram_badge = if self.tab_cleaner.is_running {
+                        "CLEANING".to_string()
+                    } else {
+                        format!("{:.0}% RAM", self.tab_cleaner.resources.ram_percent)
+                    };
+                    if nav_sidebar_item(
+                        ui,
+                        "F3",
+                        "🧹",
+                        "System Cleaner",
+                        "Free RAM, Cache & Disk",
+                        Some((&ram_badge, CYAN_INFO)),
+                        self.current_tab == AppTab::Cleaner,
+                    ) {
+                        self.current_tab = AppTab::Cleaner;
+                    }
+
+                    ui.add_space(4.0);
+
+                    if nav_sidebar_item(
+                        ui,
+                        "F4",
+                        "🎧",
+                        "Headset Audio",
+                        "Q3 Pro Bluetooth Modes",
+                        Some(("BT SPP", AMBER_WARN)),
+                        self.current_tab == AppTab::Headset,
+                    ) {
+                        self.current_tab = AppTab::Headset;
+                    }
+
+                    ui.add_space(4.0);
+
+                    let (sec_txt, sec_col) = if self.tab_security.is_isolated {
+                        ("LOCKED", RED_BRIGHT)
+                    } else {
+                        ("OPEN", GREEN_OK)
+                    };
+                    if nav_sidebar_item(
+                        ui,
+                        "F5",
+                        "🛡️",
+                        "Network & Guard",
+                        "Firewall, Local IPs & Bridge",
+                        Some((sec_txt, sec_col)),
+                        self.current_tab == AppTab::Security,
+                    ) {
+                        self.current_tab = AppTab::Security;
+                    }
+
+                    ui.add_space(4.0);
+
+                    if nav_sidebar_item(
+                        ui,
+                        "F6",
+                        "📱",
+                        "iOS Device Tools",
+                        "USB Inspector & Tunnel",
+                        Some(("USB", CYAN_INFO)),
+                        self.current_tab == AppTab::IDevice,
+                    ) {
+                        self.current_tab = AppTab::IDevice;
+                    }
+
+                    ui.add_space(12.0);
+                    ui.separator();
+                    ui.add_space(8.0);
+
+                    // Sidebar System Quick-Summary Box
+                    egui::Frame::new()
+                        .fill(BG_VOID)
+                        .stroke(egui::Stroke::new(1.0, BORDER_SUBTLE))
+                        .corner_radius(6)
+                        .inner_margin(10)
+                        .show(ui, |ui| {
+                            ui.set_width(ui.available_width());
+                            ui.label(
+                                egui::RichText::new("SYSTEM SUMMARY")
+                                    .strong()
+                                    .size(9.5)
+                                    .color(CYAN_INFO),
+                            );
+                            ui.add_space(4.0);
+                            ui.label(
+                                egui::RichText::new(format!(
+                                    "• Uptime: {}\n• CPU Clock: {:.2} GHz\n• Governor: {}\n• NVMe SSD: {:.0}°C ({:.0}% Used)\n• Profile: {}",
+                                    self.tab_hardware.telemetry.uptime_formatted,
+                                    self.tab_hardware.telemetry.cpu_freq_ghz,
+                                    self.tab_hardware.telemetry.cpu_governor,
+                                    self.tab_hardware.telemetry.nvme_temp,
+                                    self.tab_cleaner.resources.disk_percent,
+                                    self.tab_hardware.active_profile.to_uppercase(),
+                                ))
+                                .size(10.0)
+                                .color(TEXT_MUTED),
+                            );
+                        });
+                });
+
+            ui.add_space(6.0);
+
+            // Right Main Scrollable Tab Viewport
+            egui::ScrollArea::vertical()
+                .id_salt("main_viewport_scroll")
+                .max_height(avail_h)
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    match self.current_tab {
+                        AppTab::Hardware => self.tab_hardware.ui(ui, &mut status_cb),
+                        AppTab::Controller => self.tab_controller.ui(ui, &mut status_cb),
+                        AppTab::Cleaner => self.tab_cleaner.ui(ui, &mut status_cb),
+                        AppTab::Headset => self.tab_headset.ui(ui, &mut status_cb),
+                        AppTab::Security => self.tab_security.ui(ui, &mut status_cb),
+                        AppTab::IDevice => self.tab_idevice.ui(ui, &mut status_cb),
+                    }
+                });
+        });
 
         if let Some((msg, color)) = status_change {
             self.set_status(msg, color);
         }
 
         // ═══════════════════════════════════════════════════════════════════
-        //  4. BOTTOM COMMAND HUD STATUS BAR
+        //  3. BOTTOM STATUS & VISUAL COLOR LEGEND BAR
         // ═══════════════════════════════════════════════════════════════════
         egui::Frame::new()
             .fill(BG_PANEL)
@@ -264,28 +357,20 @@ impl eframe::App for ZaneMegApp {
             .inner_margin(egui::Margin::symmetric(14, 6))
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new("●").size(10.0).color(self.status_color));
+                    ui.label(egui::RichText::new("●").size(11.0).color(self.status_color));
                     ui.label(
                         egui::RichText::new(&self.status_message)
+                            .strong()
                             .size(11.0)
                             .color(TEXT_MAIN),
                     );
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let sys_info = format!(
-                            "LOAD: {:.0}% | CPU: {:.0}°C | GPU: {:.0}°C | NVMe: {:.0}°C | {:.2} GHz | UP: {}",
-                            self.tab_hardware.telemetry.cpu_load_pct,
-                            self.tab_hardware.telemetry.cpu_temp,
-                            self.tab_hardware.telemetry.gpu_temp,
-                            self.tab_hardware.telemetry.nvme_temp,
-                            self.tab_hardware.telemetry.cpu_freq_ghz,
-                            self.tab_hardware.telemetry.uptime_formatted
-                        );
                         ui.label(
-                            egui::RichText::new(sys_info)
+                            egui::RichText::new("Shortcuts: [F1–F6] Switch Modules")
                                 .monospace()
                                 .size(10.0)
-                                .color(TEXT_MUTED),
+                                .color(TEXT_DIM),
                         );
                     });
                 });

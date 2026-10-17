@@ -51,9 +51,9 @@ fn main() -> eframe::Result<()> {
 
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([1040.0, 820.0])
-            .with_min_inner_size([880.0, 620.0])
-            .with_title("⚡ ZANE MEGAPP // CYBER-DECK MATRIX (V2.5 RUST)"),
+            .with_inner_size([1140.0, 840.0])
+            .with_min_inner_size([960.0, 640.0])
+            .with_title("⚡ ZANE MEGAPP // V3.0 VISUAL COMMAND DECK"),
         ..Default::default()
     };
 
