@@ -28,6 +28,7 @@ impl HeadsetCommand {
         }
     }
 
+    #[allow(dead_code)]
     pub fn label(&self) -> &'static str {
         match self {
             Self::NoiseCancellation => "🛡️ ANC (Active Noise Cancellation) [UNVERIFIED]",

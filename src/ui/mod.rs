@@ -16,6 +16,7 @@ pub enum AppTab {
 }
 
 impl AppTab {
+    #[allow(dead_code)]
     pub fn title(&self) -> &'static str {
         match self {
             Self::Hardware => "⚡ HARDWARE & POWER",

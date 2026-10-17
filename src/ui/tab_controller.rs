@@ -16,7 +16,11 @@ impl TabController {
     pub fn new() -> Self {
         let (tx, rx) = channel();
         let manager = ControllerManager::new();
-        let init_target = format!("[*] Controller Space initialized.\n[*] Target Directory: {}\n[*] Target Launcher: {}\n[*] Ready to launch Starship Cockpit.", manager.dir.display(), manager.script.display());
+        let init_target = format!(
+            "[*] Controller Space Flight Deck initialized.\n[*] Target Directory: {}\n[*] Target Launcher: {}\n[*] Ready to launch Starship Cockpit.",
+            manager.dir.display(),
+            manager.script.display()
+        );
         Self {
             manager,
             running_pid: None,
@@ -34,7 +38,6 @@ impl TabController {
             }
         }
 
-        // Check if running PID has exited
         if let Some(pid) = self.running_pid {
             if !ControllerManager::is_running(Some(pid)) {
                 self.running_pid = None;
@@ -44,82 +47,85 @@ impl TabController {
 
     pub fn ui(&mut self, ui: &mut egui::Ui, set_status: &mut dyn FnMut(String, egui::Color32)) {
         self.poll_logs();
-        ui.add_space(6.0);
+        ui.add_space(4.0);
 
         let is_running = ControllerManager::is_running(self.running_pid);
+        let badge_str = if let Some(pid) = self.running_pid {
+            format!("● ONLINE (PID {pid})")
+        } else {
+            "● OFFLINE / STANDBY".to_string()
+        };
+        let badge = if is_running {
+            (badge_str.as_str(), GREEN_OK, GREEN_SUBTLE)
+        } else {
+            (badge_str.as_str(), TEXT_MUTED, BG_CARD)
+        };
 
-        // 1. Hero Card
-        egui::Frame::new()
-            .fill(BG_PANEL)
-            .stroke(egui::Stroke::new(1.0, BORDER_DARK))
-            .corner_radius(8)
-            .inner_margin(12)
-            .show(ui, |ui| {
+        // 1. Flight Deck Hero & Lifecycle Matrix Card
+        cyber_card(
+            ui,
+            "🛸 CONTROLLER SPACE // STARSHIP FLIGHT DECK",
+            Some("DUALSHOCK 4 & GAMEPAD TELEMETRY MATRIX"),
+            RED_PRIMARY,
+            Some(badge),
+            |ui| {
+                ui.label(
+                    egui::RichText::new(
+                        "1000Hz Polling Rate • Capacitive Touchpad Matrix • Gyro/Accel IMU • Haptics & RGB Lightbar Control",
+                    )
+                    .size(11.0)
+                    .color(TEXT_MUTED),
+                );
+                ui.label(
+                    egui::RichText::new(format!("Launcher Script: {}", self.manager.script.display()))
+                        .monospace()
+                        .size(10.0)
+                        .color(CYAN_INFO),
+                );
+
+                ui.add_space(8.0);
+
+                // Primary Lifecycle Buttons Row
                 ui.horizontal(|ui| {
-                    ui.vertical(|ui| {
-                        ui.label(egui::RichText::new("🛸 CONTROLLER SPACE // STARSHIP FLIGHT DECK").strong().size(14.0).color(RED_PRIMARY));
-                        ui.label(egui::RichText::new("PS4 DualShock 4 & Gamepad Telemetry • 1000Hz Polling Matrix • Capacitive Touchpad • Haptics & LEDs").size(10.0).color(TEXT_MUTED));
-                        ui.label(egui::RichText::new(format!("Target: {}", self.manager.script.display())).monospace().size(9.0).color(egui::Color32::from_rgb(170, 102, 102)));
-                    });
+                    let start_btn = egui::Button::new(
+                        egui::RichText::new("🚀 LAUNCH STARSHIP COCKPIT (start.sh)")
+                            .strong()
+                            .size(12.0)
+                            .color(egui::Color32::WHITE),
+                    )
+                    .fill(if is_running { BG_ELEVATED } else { RED_PRIMARY })
+                    .min_size(egui::vec2(290.0, 38.0));
 
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let (badge_text, badge_color) = if is_running {
-                            ("● ONLINE", GREEN_OK)
-                        } else {
-                            ("● OFFLINE", TEXT_MUTED)
-                        };
-                        ui.label(egui::RichText::new(badge_text).strong().size(12.0).color(badge_color));
-                    });
-                });
-            });
-
-        ui.add_space(8.0);
-
-        // 2. Action Controls Card
-        egui::Frame::new()
-            .fill(BG_PANEL)
-            .stroke(egui::Stroke::new(1.0, BORDER_DARK))
-            .corner_radius(8)
-            .inner_margin(12)
-            .show(ui, |ui| {
-                ui.label(egui::RichText::new("HARDWARE MATRIX CONTROLS & SHORTCUTS").strong().size(12.0).color(TEXT_MAIN));
-                ui.add_space(6.0);
-
-                // Main Buttons Row
-                ui.horizontal(|ui| {
-                    let start_btn = egui::Button::new(egui::RichText::new("🚀 START CONTROLLER SPACE (start.sh)").strong().size(12.0))
-                        .fill(RED_PRIMARY)
-                        .min_size(egui::vec2(280.0, 38.0));
                     if ui.add(start_btn).clicked() {
                         if is_running {
-                            set_status("Controller Space is already running".into(), RED_BRIGHT);
+                            set_status("Controller Space is already running".into(), AMBER_WARN);
                         } else {
                             match self.manager.launch(self.tx.clone()) {
                                 Ok(pid) => {
                                     self.running_pid = Some(pid);
-                                    set_status(format!("Controller Space started (PID {pid})"), GREEN_OK);
+                                    set_status(format!("Controller Space launched (PID {pid})"), GREEN_OK);
                                 }
                                 Err(e) => set_status(e, RED_BRIGHT),
                             }
                         }
                     }
 
-                    let stop_btn = egui::Button::new(egui::RichText::new("🛑 STOP").strong().size(12.0))
-                        .fill(BG_CARD)
-                        .min_size(egui::vec2(100.0, 38.0));
-                    if ui.add(stop_btn).clicked() {
+                    let stop_btn = egui::Button::new(egui::RichText::new("🛑 TERMINATE").strong().size(11.5))
+                        .fill(if is_running { RED_CRIMSON } else { BG_CARD })
+                        .min_size(egui::vec2(120.0, 38.0));
+
+                    if ui.add_enabled(is_running, stop_btn).clicked() {
                         if let Some(pid) = self.running_pid {
                             ControllerManager::stop(pid, &self.tx);
                             self.running_pid = None;
                             set_status("Stopped Controller Space".into(), GREEN_OK);
-                        } else {
-                            set_status("No running instance detected".into(), TEXT_MUTED);
                         }
                     }
 
-                    let restart_btn = egui::Button::new(egui::RichText::new("🔄 RESTART").strong().size(12.0))
+                    let restart_btn = egui::Button::new(egui::RichText::new("🔄 RESTART").strong().size(11.5))
                         .fill(BG_CARD)
-                        .min_size(egui::vec2(100.0, 38.0));
+                        .min_size(egui::vec2(120.0, 38.0));
+
                     if ui.add(restart_btn).clicked() {
                         if let Some(pid) = self.running_pid {
                             ControllerManager::stop(pid, &self.tx);
@@ -134,50 +140,53 @@ impl TabController {
                     }
                 });
 
-                ui.add_space(8.0);
+                ui.add_space(6.0);
 
-                // Links & Subsystem Launchers Row
-                ui.horizontal(|ui| {
-                    if ui.button("🌐 GitHub: ZaneGoat/Controler-space").clicked() {
-                        ControllerManager::open_github();
+                // Quick Subsystem Shortcuts
+                ui.columns(3, |cols| {
+                    if cols[0]
+                        .add_sized(
+                            [cols[0].available_width(), 32.0],
+                            egui::Button::new(egui::RichText::new("💡 Launch LED & Rumble Matrix (led.py)").size(11.0)),
+                        )
+                        .clicked()
+                    {
+                        self.manager.launch_led(&self.tx);
+                        set_status("Launched LED & Rumble Matrix Window".into(), CYAN_INFO);
                     }
-                    if ui.button("📂 Open Controler Space Folder").clicked() {
+
+                    if cols[1]
+                        .add_sized(
+                            [cols[1].available_width(), 32.0],
+                            egui::Button::new(egui::RichText::new("📂 Open Project Directory").size(11.0)),
+                        )
+                        .clicked()
+                    {
                         self.manager.open_folder();
                     }
-                    if ui.button("💡 Launch LED & Rumble Window").clicked() {
-                        self.manager.launch_led(&self.tx);
+
+                    if cols[2]
+                        .add_sized(
+                            [cols[2].available_width(), 32.0],
+                            egui::Button::new(egui::RichText::new("🌐 GitHub: ZaneGoat/Controler-space").size(11.0)),
+                        )
+                        .clicked()
+                    {
+                        ControllerManager::open_github();
                     }
                 });
-            });
+            },
+        );
 
         ui.add_space(8.0);
 
-        // 3. Terminal Output Card
-        egui::Frame::new()
-            .fill(BG_PANEL)
-            .stroke(egui::Stroke::new(1.0, BORDER_DARK))
-            .corner_radius(8)
-            .inner_margin(12)
-            .show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new("CONTROLLER SPACE // CONSOLE & RUNTIME TELEMETRY").strong().size(11.0).color(TEXT_MAIN));
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.button("Clear Log").clicked() {
-                            self.logs.clear();
-                        }
-                    });
-                });
-
-                ui.add_space(4.0);
-
-                egui::ScrollArea::vertical()
-                    .stick_to_bottom(true)
-                    .max_height(240.0)
-                    .show(ui, |ui| {
-                        for line in &self.logs {
-                            ui.label(egui::RichText::new(line).monospace().size(10.5).color(egui::Color32::from_rgb(220, 220, 220)));
-                        }
-                    });
-            });
+        // 2. Live Subprocess Telemetry Console
+        cyber_console(
+            ui,
+            "controller_console_scroll",
+            "CONTROLLER SPACE // SUBPROCESS STDOUT & STDERR STREAM",
+            &mut self.logs,
+            310.0,
+        );
     }
 }

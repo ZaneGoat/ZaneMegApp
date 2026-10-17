@@ -35,12 +35,13 @@ impl ZaneMegApp {
             tab_headset: TabHeadset::new(),
             tab_security: TabSecurity::new(),
             tab_idevice: TabIDevice::new(),
-            status_message: "Ready".into(),
-            status_color: TEXT_MUTED,
+            status_message: "ZaneMegApp Core Matrix Online".into(),
+            status_color: GREEN_OK,
             last_telemetry_tick: Instant::now(),
         };
 
         app.tab_hardware.update_telemetry();
+        app.tab_cleaner.update_resources();
         app
     }
 
@@ -52,76 +53,166 @@ impl ZaneMegApp {
 
 impl eframe::App for ZaneMegApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        // Telemetry update interval (1 sec)
+        // Telemetry update interval (every 1 second)
         if self.last_telemetry_tick.elapsed() >= Duration::from_millis(1000) {
             self.last_telemetry_tick = Instant::now();
             self.tab_hardware.update_telemetry();
+            self.tab_cleaner.update_resources();
             self.tab_security.refresh_state();
         }
 
-        // Request a redraw every 500ms to keep animations and graphs smooth
+        // Request repaint every 500ms to keep animations and graphs fluid
         ui.ctx().request_repaint_after(Duration::from_millis(500));
 
-        // 1. Top Header Panel
+        // ═══════════════════════════════════════════════════════════════════
+        //  1. TOP CYBER-DECK TELEMETRY HUD HEADER
+        // ═══════════════════════════════════════════════════════════════════
         egui::Frame::new()
             .fill(BG_PANEL)
             .stroke(egui::Stroke::new(1.0, BORDER_DARK))
-            .inner_margin(egui::Margin::symmetric(16, 10))
+            .inner_margin(egui::Margin::symmetric(14, 8))
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
+                    // Logo & Rig Identification
                     ui.label(
-                        egui::RichText::new("ZANE MEGAPP")
+                        egui::RichText::new("⚡ ZANE MEGAPP")
                             .strong()
-                            .size(17.0)
+                            .size(16.5)
                             .color(RED_PRIMARY),
                     );
                     ui.label(
-                        egui::RichText::new("V2.0 / RUST CORE MATRIX")
-                            .size(10.0)
+                        egui::RichText::new("V2.5 CYBER-DECK // MSI GF65 THIN")
+                            .monospace()
+                            .size(9.5)
                             .color(TEXT_MUTED),
                     );
 
+                    // Right-aligned Mini-HUD Telemetry Pills
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let tabs = [
-                            AppTab::IDevice,
-                            AppTab::Security,
-                            AppTab::Headset,
-                            AppTab::Cleaner,
-                            AppTab::Controller,
-                            AppTab::Hardware,
-                        ];
+                        // Shield Status Pill
+                        let (s_text, s_fg, s_bg) = if self.tab_security.is_isolated {
+                            ("🛡️ ISOLATED", RED_BRIGHT, RED_SUBTLE)
+                        } else {
+                            ("🛡️ OPEN", GREEN_OK, GREEN_SUBTLE)
+                        };
+                        status_pill(ui, s_text, s_fg, s_bg);
 
-                        for tab in tabs {
-                            let is_active = self.current_tab == tab;
-                            let btn_color = if is_active { RED_PRIMARY } else { BG_CARD };
-                            let text_color = if is_active { egui::Color32::WHITE } else { TEXT_MAIN };
+                        // Battery Pill
+                        let bat_text = format!("⚡ {}%", self.tab_hardware.telemetry.battery_pct);
+                        status_pill(ui, &bat_text, TEXT_MAIN, BG_CARD);
 
-                            let btn = egui::Button::new(
-                                egui::RichText::new(tab.title())
-                                    .strong()
-                                    .size(11.0)
-                                    .color(text_color),
-                            )
-                            .fill(btn_color)
-                            .min_size(egui::vec2(0.0, 28.0));
+                        // NVMe Disk % Pill
+                        let disk_pct = self.tab_cleaner.resources.disk_percent;
+                        let disk_text = format!("NVMe: {:.0}%", disk_pct);
+                        status_pill(ui, &disk_text, CYAN_INFO, CYAN_SUBTLE);
 
-                            if ui.add(btn).clicked() {
-                                self.current_tab = tab;
-                            }
-                        }
+                        // RAM % Pill
+                        let ram_pct = self.tab_cleaner.resources.ram_percent;
+                        let (ram_fg, ram_bg) = if ram_pct >= 85.0 {
+                            (RED_BRIGHT, RED_SUBTLE)
+                        } else if ram_pct >= 65.0 {
+                            (AMBER_WARN, AMBER_SUBTLE)
+                        } else {
+                            (GREEN_OK, GREEN_SUBTLE)
+                        };
+                        status_pill(ui, &format!("RAM: {:.0}%", ram_pct), ram_fg, ram_bg);
+
+                        // CPU Temp Pill
+                        let cpu_t = self.tab_hardware.telemetry.cpu_temp;
+                        let (cpu_fg, cpu_bg) = if cpu_t >= 80.0 {
+                            (RED_BRIGHT, RED_SUBTLE)
+                        } else if cpu_t >= 65.0 {
+                            (AMBER_WARN, AMBER_SUBTLE)
+                        } else {
+                            (GREEN_OK, GREEN_SUBTLE)
+                        };
+                        status_pill(ui, &format!("CPU: {:.0}°C", cpu_t), cpu_fg, cpu_bg);
                     });
                 });
             });
 
-        ui.add_space(4.0);
+        // ═══════════════════════════════════════════════════════════════════
+        //  2. CYBER NAVIGATION RAIL // SEGMENTED TAB SELECTOR
+        // ═══════════════════════════════════════════════════════════════════
+        egui::Frame::new()
+            .fill(BG_VOID)
+            .inner_margin(egui::Margin::symmetric(8, 4))
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    let tabs = [
+                        (AppTab::Hardware, "⚡ HARDWARE & POWER", None),
+                        (
+                            AppTab::Controller,
+                            "🎮 CONTROLLER SPACE",
+                            self.tab_controller.running_pid.map(|p| format!("PID {p}")),
+                        ),
+                        (
+                            AppTab::Cleaner,
+                            "🧹 SYSTEM CLEANER",
+                            if self.tab_cleaner.is_running {
+                                Some("RUNNING".to_string())
+                            } else {
+                                None
+                            },
+                        ),
+                        (AppTab::Headset, "🎧 HEADSET", None),
+                        (
+                            AppTab::Security,
+                            "🛡️ SECURITY",
+                            if self.tab_security.is_isolated {
+                                Some("LOCKED".to_string())
+                            } else {
+                                None
+                            },
+                        ),
+                        (AppTab::IDevice, "📱 iDEVICE", None),
+                    ];
 
-        // 2. Central Tab Content Panel
+                    for (tab, label, tag) in tabs {
+                        let is_active = self.current_tab == tab;
+                        let bg_color = if is_active { RED_CRIMSON } else { BG_PANEL };
+                        let text_color = if is_active { egui::Color32::WHITE } else { TEXT_MAIN };
+                        let stroke = if is_active {
+                            egui::Stroke::new(1.2, RED_BRIGHT)
+                        } else {
+                            egui::Stroke::new(1.0, BORDER_DARK)
+                        };
+
+                        let btn_content = if let Some(ref t) = tag {
+                            format!("{label} [{t}]")
+                        } else {
+                            label.to_string()
+                        };
+
+                        let btn = egui::Button::new(
+                            egui::RichText::new(btn_content)
+                                .strong()
+                                .size(11.0)
+                                .color(text_color),
+                        )
+                        .fill(bg_color)
+                        .stroke(stroke)
+                        .min_size(egui::vec2(0.0, 30.0));
+
+                        if ui.add(btn).clicked() {
+                            self.current_tab = tab;
+                        }
+                    }
+                });
+            });
+
+        ui.add_space(2.0);
+
+        // ═══════════════════════════════════════════════════════════════════
+        //  3. CENTRAL SCROLLABLE TAB VIEWPORT
+        // ═══════════════════════════════════════════════════════════════════
         let mut status_change: Option<(String, egui::Color32)> = None;
         let mut status_cb = |msg: String, color: egui::Color32| {
             status_change = Some((msg, color));
         };
 
         egui::ScrollArea::vertical()
+            .id_salt("main_viewport_scroll")
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 match self.current_tab {
@@ -138,7 +229,9 @@ impl eframe::App for ZaneMegApp {
             self.set_status(msg, color);
         }
 
-        // 3. Bottom Status Bar
+        // ═══════════════════════════════════════════════════════════════════
+        //  4. BOTTOM COMMAND HUD STATUS BAR
+        // ═══════════════════════════════════════════════════════════════════
         egui::Frame::new()
             .fill(BG_PANEL)
             .stroke(egui::Stroke::new(1.0, BORDER_DARK))
@@ -146,11 +239,26 @@ impl eframe::App for ZaneMegApp {
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.label(egui::RichText::new("●").size(10.0).color(self.status_color));
-                    ui.label(egui::RichText::new(&self.status_message).size(11.0).color(TEXT_MAIN));
+                    ui.label(
+                        egui::RichText::new(&self.status_message)
+                            .size(11.0)
+                            .color(TEXT_MAIN),
+                    );
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let sys_info = format!("CPU: {:.0}°C | GPU: {:.0}°C", self.tab_hardware.telemetry.cpu_temp, self.tab_hardware.telemetry.gpu_temp);
-                        ui.label(egui::RichText::new(sys_info).monospace().size(10.0).color(TEXT_MUTED));
+                        let sys_info = format!(
+                            "CPU: {:.0}°C | GPU: {:.0}°C | NVMe: {:.0}°C | {:.2} GHz",
+                            self.tab_hardware.telemetry.cpu_temp,
+                            self.tab_hardware.telemetry.gpu_temp,
+                            self.tab_hardware.telemetry.nvme_temp,
+                            self.tab_hardware.telemetry.cpu_freq_ghz
+                        );
+                        ui.label(
+                            egui::RichText::new(sys_info)
+                                .monospace()
+                                .size(10.0)
+                                .color(TEXT_MUTED),
+                        );
                     });
                 });
             });

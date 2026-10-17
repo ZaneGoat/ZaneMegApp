@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <!-- Background Gradient -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#14141c"/>
+      <stop offset="50%" stop-color="#0a0a0f"/>
+      <stop offset="100%" stop-color="#050508"/>
+    </linearGradient>
+
+    <!-- Neon Red Glow Gradient -->
+    <linearGradient id="redNeon" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ff3366"/>
+      <stop offset="50%" stop-color="#ff003c"/>
+      <stop offset="100%" stop-color="#b3001e"/>
+    </linearGradient>
+
+    <!-- Cyan Accent Gradient -->
+    <linearGradient id="cyanAccent" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00f0ff"/>
+      <stop offset="100%" stop-color="#0080ff"/>
+    </linearGradient>
+
+    <!-- Filter for subtle drop glow -->
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+
+  <!-- Base Rounded Hexagon Background -->
+  <rect x="8" y="8" width="240" height="240" rx="48" fill="url(#bgGrad)" stroke="#28283c" stroke-width="2.5"/>
+  <rect x="14" y="14" width="228" height="228" rx="42" fill="none" stroke="url(#redNeon)" stroke-width="2.5" stroke-opacity="0.8" filter="url(#glow)"/>
+
+  <!-- Cyber Grid Circuit Accents -->
+  <path d="M 40 70 L 70 70 L 90 90" fill="none" stroke="#323246" stroke-width="2"/>
+  <circle cx="40" cy="70" r="3" fill="#ff003c"/>
+  <circle cx="90" cy="90" r="2.5" fill="#00f0ff"/>
+
+  <path d="M 216 186 L 186 186 L 166 166" fill="none" stroke="#323246" stroke-width="2"/>
+  <circle cx="216" cy="186" r="3" fill="#ff003c"/>
+  <circle cx="166" cy="166" r="2.5" fill="#00f0ff"/>
+
+  <path d="M 216 70 L 190 70" fill="none" stroke="#323246" stroke-width="2"/>
+  <circle cx="216" cy="70" r="2.5" fill="#ff003c"/>
+
+  <path d="M 40 186 L 66 186" fill="none" stroke="#323246" stroke-width="2"/>
+  <circle cx="40" cy="186" r="2.5" fill="#00f0ff"/>
+
+  <!-- Central Stylized 'Z' Core Emblem -->
+  <polygon points="76,64 180,64 180,88 116,168 180,168 180,192 76,192 76,168 140,88 76,88" 
+           fill="url(#redNeon)" 
+           stroke="#ff6688" 
+           stroke-width="2" 
+           filter="url(#glow)"/>
+
+  <!-- High-Energy Lightning Bolt Cut through the Z -->
+  <polygon points="128,42 144,98 126,98 140,148 108,110 126,110" 
+           fill="url(#cyanAccent)" 
+           stroke="#ffffff" 
+           stroke-width="1.5" 
+           filter="url(#glow)"/>
+
+  <!-- Subtitle Text Ring -->
+  <text x="128" y="222" font-family="monospace, sans-serif" font-weight="900" font-size="13" fill="#8888aa" text-anchor="middle" letter-spacing="4">CORE MATRIX</text>
+</svg>

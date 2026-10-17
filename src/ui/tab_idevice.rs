@@ -17,7 +17,10 @@ impl TabIDevice {
     pub fn new() -> Self {
         let (tx, rx) = channel();
         Self {
-            logs: vec!["[*] iDevice Toolkit ready. Connect your iOS device via USB.".into()],
+            logs: vec![
+                "[*] iDevice Toolkit ready.".into(),
+                "[*] Connect an iOS device via USB and pair to enable diagnostics.".into(),
+            ],
             syslog_proc: None,
             iproxy_proc: None,
             tx,
@@ -36,105 +39,171 @@ impl TabIDevice {
 
     pub fn ui(&mut self, ui: &mut egui::Ui, set_status: &mut dyn FnMut(String, egui::Color32)) {
         self.poll_logs();
-        ui.add_space(6.0);
+        ui.add_space(4.0);
 
-        ui.horizontal(|ui| {
-            // Left Action Panel
-            egui::Frame::new()
-                .fill(BG_PANEL)
-                .stroke(egui::Stroke::new(1.0, BORDER_DARK))
-                .corner_radius(8)
-                .inner_margin(12)
-                .show(ui, |ui| {
-                    ui.set_width(260.0);
-                    ui.label(egui::RichText::new("iOS DEVICE TOOLS").strong().size(13.0).color(RED_PRIMARY));
-                    ui.add_space(8.0);
+        let is_syslog = self.syslog_proc.is_some();
+        let is_iproxy = self.iproxy_proc.is_some();
 
-                    if ui.button("📱 Device Info (ideviceinfo)").clicked() {
-                        IDeviceManager::run_command(&["ideviceinfo"], "Device Info", self.tx.clone());
-                        set_status("Querying ideviceinfo...".into(), GREEN_OK);
-                    }
+        let badge_text = if is_syslog && is_iproxy {
+            "SYSLOG + IPROXY ACTIVE"
+        } else if is_syslog {
+            "SYSLOG STREAMING"
+        } else if is_iproxy {
+            "IPROXY TUNNEL ACTIVE"
+        } else {
+            "USB STANDBY"
+        };
 
-                    ui.add_space(4.0);
+        let badge = if is_syslog || is_iproxy {
+            (badge_text, GREEN_OK, GREEN_SUBTLE)
+        } else {
+            (badge_text, TEXT_MUTED, BG_CARD)
+        };
 
-                    let syslog_label = if self.syslog_proc.is_some() { "🛑 Stop Syslog" } else { "📜 Stream Syslog (idevicesyslog)" };
-                    if ui.button(syslog_label).clicked() {
-                        if let Some(mut proc) = self.syslog_proc.take() {
-                            let _ = proc.kill();
-                            self.tx.send("[*] Syslog streaming stopped.".into()).ok();
-                            set_status("Stopped idevicesyslog".into(), TEXT_MUTED);
+        ui.horizontal_top(|ui| {
+            // Left Action Sidebar
+            ui.vertical(|ui| {
+                ui.set_width(310.0);
+
+                cyber_card(
+                    ui,
+                    "iOS USB TOOLKIT",
+                    Some("LIBIMOBILEDEVICE"),
+                    RED_PRIMARY,
+                    Some(badge),
+                    |ui| {
+                        // Diagnostic tools
+                        let info_btn = egui::Button::new(
+                            egui::RichText::new("📱 Query Device Info (ideviceinfo)")
+                                .strong()
+                                .size(11.0),
+                        )
+                        .fill(BG_CARD)
+                        .min_size(egui::vec2(ui.available_width(), 34.0));
+
+                        if ui.add(info_btn).clicked() {
+                            IDeviceManager::run_command(&["ideviceinfo"], "Device Info", self.tx.clone());
+                            set_status("Querying ideviceinfo...".into(), CYAN_INFO);
+                        }
+
+                        ui.add_space(4.0);
+
+                        // Syslog Toggle Button
+                        let syslog_text = if is_syslog {
+                            "🛑 STOP SYSLOG STREAM"
                         } else {
-                            match IDeviceManager::start_syslog(self.tx.clone()) {
-                                Ok(proc) => {
-                                    self.syslog_proc = Some(proc);
-                                    set_status("Streaming idevicesyslog...".into(), GREEN_OK);
+                            "📜 STREAM LIVE SYSLOG (idevicesyslog)"
+                        };
+                        let syslog_fill = if is_syslog { RED_CRIMSON } else { BG_CARD };
+                        let syslog_btn = egui::Button::new(
+                            egui::RichText::new(syslog_text)
+                                .strong()
+                                .size(11.0)
+                                .color(if is_syslog { egui::Color32::WHITE } else { TEXT_MAIN }),
+                        )
+                        .fill(syslog_fill)
+                        .min_size(egui::vec2(ui.available_width(), 34.0));
+
+                        if ui.add(syslog_btn).clicked() {
+                            if let Some(mut proc) = self.syslog_proc.take() {
+                                let _ = proc.kill();
+                                self.tx.send("[*] idevicesyslog streaming stopped.".into()).ok();
+                                set_status("Stopped idevicesyslog".into(), TEXT_MUTED);
+                            } else {
+                                match IDeviceManager::start_syslog(self.tx.clone()) {
+                                    Ok(proc) => {
+                                        self.syslog_proc = Some(proc);
+                                        set_status("Streaming idevicesyslog...".into(), GREEN_OK);
+                                    }
+                                    Err(e) => set_status(e, RED_BRIGHT),
                                 }
-                                Err(e) => set_status(e, RED_BRIGHT),
                             }
                         }
-                    }
 
-                    ui.add_space(4.0);
+                        ui.add_space(4.0);
 
-                    let iproxy_label = if self.iproxy_proc.is_some() { "🛑 Stop SSH Proxy" } else { "🔌 Forward Port 2222 -> 22 (iproxy)" };
-                    if ui.button(iproxy_label).clicked() {
-                        if let Some(mut proc) = self.iproxy_proc.take() {
-                            let _ = proc.kill();
-                            self.tx.send("[*] iproxy tunnel stopped.".into()).ok();
-                            set_status("Stopped iproxy".into(), TEXT_MUTED);
+                        // iProxy SSH Forwarding Toggle
+                        let iproxy_text = if is_iproxy {
+                            "🛑 STOP SSH PROXY TUNNEL"
                         } else {
-                            match IDeviceManager::start_iproxy(2222, 22, self.tx.clone()) {
-                                Ok(proc) => {
-                                    self.iproxy_proc = Some(proc);
-                                    set_status("iproxy active on 127.0.0.1:2222".into(), GREEN_OK);
+                            "🔌 FORWARD 127.0.0.1:2222 -> :22"
+                        };
+                        let iproxy_fill = if is_iproxy { RED_CRIMSON } else { BG_CARD };
+                        let iproxy_btn = egui::Button::new(
+                            egui::RichText::new(iproxy_text)
+                                .strong()
+                                .size(11.0)
+                                .color(if is_iproxy { egui::Color32::WHITE } else { TEXT_MAIN }),
+                        )
+                        .fill(iproxy_fill)
+                        .min_size(egui::vec2(ui.available_width(), 34.0));
+
+                        if ui.add(iproxy_btn).clicked() {
+                            if let Some(mut proc) = self.iproxy_proc.take() {
+                                let _ = proc.kill();
+                                self.tx.send("[*] iproxy tunnel stopped.".into()).ok();
+                                set_status("Stopped iproxy tunnel".into(), TEXT_MUTED);
+                            } else {
+                                match IDeviceManager::start_iproxy(2222, 22, self.tx.clone()) {
+                                    Ok(proc) => {
+                                        self.iproxy_proc = Some(proc);
+                                        set_status("iproxy active: 127.0.0.1:2222 -> iOS :22".into(), GREEN_OK);
+                                    }
+                                    Err(e) => set_status(e, RED_BRIGHT),
                                 }
-                                Err(e) => set_status(e, RED_BRIGHT),
                             }
                         }
-                    }
 
-                    ui.add_space(4.0);
+                        ui.add_space(6.0);
+                        ui.separator();
+                        ui.add_space(6.0);
 
-                    if ui.button("🔑 Pair Device (idevicepair)").clicked() {
-                        IDeviceManager::run_command(&["idevicepair", "pair"], "Pairing Device", self.tx.clone());
-                    }
+                        // Pairing Controls
+                        ui.columns(2, |cols| {
+                            if cols[0]
+                                .add_sized(
+                                    [cols[0].available_width(), 30.0],
+                                    egui::Button::new(egui::RichText::new("🔑 Pair Device").size(11.0)),
+                                )
+                                .clicked()
+                            {
+                                IDeviceManager::run_command(
+                                    &["idevicepair", "pair"],
+                                    "Pair Device",
+                                    self.tx.clone(),
+                                );
+                            }
 
-                    ui.add_space(4.0);
+                            if cols[1]
+                                .add_sized(
+                                    [cols[1].available_width(), 30.0],
+                                    egui::Button::new(egui::RichText::new("✅ Validate").size(11.0)),
+                                )
+                                .clicked()
+                            {
+                                IDeviceManager::run_command(
+                                    &["idevicepair", "validate"],
+                                    "Validate Pairing",
+                                    self.tx.clone(),
+                                );
+                            }
+                        });
+                    },
+                );
+            });
 
-                    if ui.button("✅ Validate Pairing").clicked() {
-                        IDeviceManager::run_command(&["idevicepair", "validate"], "Validating Pair", self.tx.clone());
-                    }
-                });
-
-            ui.add_space(8.0);
+            ui.add_space(6.0);
 
             // Right Console Output
-            egui::Frame::new()
-                .fill(BG_PANEL)
-                .stroke(egui::Stroke::new(1.0, BORDER_DARK))
-                .corner_radius(8)
-                .inner_margin(12)
-                .show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("iDEVICE // CONSOLE & RUNTIME LOG").strong().size(11.5).color(TEXT_MAIN));
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.button("Clear Log").clicked() {
-                                self.logs.clear();
-                            }
-                        });
-                    });
-
-                    ui.add_space(6.0);
-
-                    egui::ScrollArea::vertical()
-                        .stick_to_bottom(true)
-                        .max_height(480.0)
-                        .show(ui, |ui| {
-                            for line in &self.logs {
-                                ui.label(egui::RichText::new(line).monospace().size(10.5).color(egui::Color32::from_rgb(220, 220, 220)));
-                            }
-                        });
-                });
+            ui.vertical(|ui| {
+                cyber_console(
+                    ui,
+                    "idevice_console_scroll",
+                    "iDEVICE DIAGNOSTIC // CONSOLE & RUNTIME STREAM",
+                    &mut self.logs,
+                    415.0,
+                );
+            });
         });
     }
 }

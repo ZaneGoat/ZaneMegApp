@@ -3,11 +3,13 @@ use std::collections::HashSet;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread;
 
-use crate::core::cleaner::{CleanerManager, MODULES};
+use crate::core::cleaner::{CleanerManager, SystemResources, MODULES};
 use crate::theme::*;
 
 pub struct TabCleaner {
     pub selected_ids: HashSet<String>,
+    pub resources: SystemResources,
+    pub last_reclaimed_banner: Option<String>,
     pub logs: Vec<String>,
     pub is_running: bool,
     pub tx: Sender<String>,
@@ -25,17 +27,31 @@ impl TabCleaner {
         }
         Self {
             selected_ids,
-            logs: vec!["[*] System Cleaner initialized. Select target cleanup modules and execute.".into()],
+            resources: CleanerManager::read_system_resources(),
+            last_reclaimed_banner: None,
+            logs: vec![
+                "[*] System Cleaner Matrix online.".into(),
+                "[*] Select target modules or trigger Quick RAM Boost.".into(),
+            ],
             is_running: false,
             tx,
             rx,
         }
     }
 
+    pub fn update_resources(&mut self) {
+        self.resources = CleanerManager::read_system_resources();
+    }
+
     pub fn poll_logs(&mut self) {
         while let Ok(line) = self.rx.try_recv() {
+            if line.contains("RECLAIMED //") {
+                self.last_reclaimed_banner = Some(line.replace("[✓] ", ""));
+                self.update_resources();
+            }
             if line.contains("CLEANUP PROTOCOL COMPLETED") {
                 self.is_running = false;
+                self.update_resources();
             }
             self.logs.push(line);
             if self.logs.len() > 1000 {
@@ -46,31 +62,120 @@ impl TabCleaner {
 
     pub fn ui(&mut self, ui: &mut egui::Ui, set_status: &mut dyn FnMut(String, egui::Color32)) {
         self.poll_logs();
-        ui.add_space(6.0);
+        ui.add_space(4.0);
 
-        ui.horizontal(|ui| {
-            // Left sidebar: modules & presets
+        // 1. Live System Resource Gauges Deck
+        let badge = if let Some(ref banner) = self.last_reclaimed_banner {
+            Some((banner.as_str(), GREEN_OK, GREEN_SUBTLE))
+        } else {
+            Some(("LIVE PROCFS & VFS TELEMETRY", CYAN_INFO, CYAN_SUBTLE))
+        };
+
+        cyber_card(
+            ui,
+            "LIVE MEMORY & STORAGE GAUGES",
+            Some("REALTIME RESOURCE UTILIZATION"),
+            RED_PRIMARY,
+            badge,
+            |ui| {
+                ui.columns(3, |cols| {
+                    // Gauge 1: Physical RAM
+                    let ram_frac = self.resources.ram_percent / 100.0;
+                    let ram_used_str = format!(
+                        "{:.2} / {:.2} GB",
+                        self.resources.ram_used_gb, self.resources.ram_total_gb
+                    );
+                    let ram_cache_str = format!("Cache: {:.0} MB", self.resources.ram_cached_mb);
+                    resource_gauge_card(
+                        &mut cols[0],
+                        "🧠 PHYSICAL RAM",
+                        &ram_used_str,
+                        &ram_cache_str,
+                        ram_frac,
+                    );
+
+                    // Gauge 2: Swap Memory
+                    let swap_frac = self.resources.swap_percent / 100.0;
+                    let swap_used_str = format!(
+                        "{:.2} / {:.2} GB",
+                        self.resources.swap_used_gb, self.resources.swap_total_gb
+                    );
+                    let swap_detail = if self.resources.swap_used_gb < 0.05 {
+                        "Clean"
+                    } else {
+                        "Active Paging"
+                    };
+                    resource_gauge_card(
+                        &mut cols[1],
+                        "🔄 SWAP SPACE",
+                        &swap_used_str,
+                        swap_detail,
+                        swap_frac,
+                    );
+
+                    // Gauge 3: Root NVMe Disk
+                    let disk_frac = self.resources.disk_percent / 100.0;
+                    let disk_used_str = format!(
+                        "{:.1} / {:.1} GB",
+                        self.resources.disk_used_gb, self.resources.disk_total_gb
+                    );
+                    let disk_free_str = format!("Free: {:.1} GB", self.resources.disk_free_gb);
+                    resource_gauge_card(
+                        &mut cols[2],
+                        "💾 ROOT NVMe (/)",
+                        &disk_used_str,
+                        &disk_free_str,
+                        disk_frac,
+                    );
+                });
+            },
+        );
+
+        ui.add_space(8.0);
+
+        // 2. Main Split View: Module Matrix (Left) + Execution Console (Right)
+        ui.horizontal_top(|ui| {
+            // Left Sidebar: Cleanup Modules
             egui::Frame::new()
                 .fill(BG_PANEL)
                 .stroke(egui::Stroke::new(1.0, BORDER_DARK))
                 .corner_radius(8)
                 .inner_margin(12)
                 .show(ui, |ui| {
-                    ui.set_width(280.0);
-                    ui.label(egui::RichText::new("CLEANUP MODULES").strong().size(13.0).color(RED_PRIMARY));
-                    ui.add_space(4.0);
+                    ui.set_width(310.0);
 
-                    // Preset buttons
                     ui.horizontal(|ui| {
-                        if ui.button("All").clicked() {
+                        let (rect, _) = ui.allocate_exact_size(egui::vec2(4.0, 15.0), egui::Sense::hover());
+                        ui.painter().rect_filled(rect, 2.0, RED_PRIMARY);
+                        ui.label(
+                            egui::RichText::new("OPTIMIZATION MODULES")
+                                .strong()
+                                .size(12.0)
+                                .color(TEXT_MAIN),
+                        );
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            status_pill(
+                                ui,
+                                &format!("{}/{} SELECTED", self.selected_ids.len(), MODULES.len()),
+                                RED_BRIGHT,
+                                RED_SUBTLE,
+                            );
+                        });
+                    });
+
+                    ui.add_space(6.0);
+
+                    // Preset Selector Row
+                    ui.horizontal(|ui| {
+                        if ui.small_button("✔ All").clicked() {
                             for m in MODULES {
                                 self.selected_ids.insert(m.id.to_string());
                             }
                         }
-                        if ui.button("None").clicked() {
+                        if ui.small_button("✖ None").clicked() {
                             self.selected_ids.clear();
                         }
-                        if ui.button("Safe Default").clicked() {
+                        if ui.small_button("🛡 Safe Default").clicked() {
                             self.selected_ids.clear();
                             for m in MODULES {
                                 if m.default_checked {
@@ -78,92 +183,131 @@ impl TabCleaner {
                                 }
                             }
                         }
+                        if ui.small_button("🧠 RAM Only").clicked() {
+                            self.selected_ids.clear();
+                            self.selected_ids.insert("smart_ram".into());
+                            self.selected_ids.insert("kernel_cache".into());
+                        }
                     });
 
-                    ui.add_space(8.0);
+                    ui.add_space(6.0);
                     ui.separator();
                     ui.add_space(4.0);
 
                     egui::ScrollArea::vertical()
-                        .max_height(380.0)
+                        .id_salt("cleaner_modules_scroll")
+                        .max_height(310.0)
                         .show(ui, |ui| {
                             for m in MODULES {
-                                let mut checked = self.selected_ids.contains(m.id);
-                                let root_tag = if m.requires_root { " (root)" } else { "" };
-                                let label_text = format!("{}{}", m.name, root_tag);
+                                let is_checked = self.selected_ids.contains(m.id);
+                                let mut checked = is_checked;
+                                let row_bg = if is_checked { BG_CARD } else { BG_PANEL };
+                                let text_color = if is_checked { TEXT_MAIN } else { TEXT_MUTED };
 
-                                if ui.checkbox(&mut checked, egui::RichText::new(label_text).size(11.0))
-                                    .on_hover_text(m.description)
-                                    .changed()
-                                {
-                                    if checked {
-                                        self.selected_ids.insert(m.id.to_string());
-                                    } else {
-                                        self.selected_ids.remove(m.id);
-                                    }
-                                }
+                                egui::Frame::new()
+                                    .fill(row_bg)
+                                    .corner_radius(5)
+                                    .inner_margin(egui::Margin::symmetric(8, 4))
+                                    .show(ui, |ui| {
+                                        ui.horizontal(|ui| {
+                                            if ui
+                                                .checkbox(
+                                                    &mut checked,
+                                                    egui::RichText::new(m.name).size(11.0).color(text_color),
+                                                )
+                                                .on_hover_text(m.description)
+                                                .changed()
+                                            {
+                                                if checked {
+                                                    self.selected_ids.insert(m.id.to_string());
+                                                } else {
+                                                    self.selected_ids.remove(m.id);
+                                                }
+                                            }
+
+                                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                                if m.requires_root {
+                                                    ui.label(
+                                                        egui::RichText::new("ROOT")
+                                                            .monospace()
+                                                            .size(8.5)
+                                                            .color(AMBER_WARN),
+                                                    );
+                                                } else {
+                                                    ui.label(
+                                                        egui::RichText::new(m.category)
+                                                            .monospace()
+                                                            .size(8.5)
+                                                            .color(TEXT_DIM),
+                                                    );
+                                                }
+                                            });
+                                        });
+                                    });
                             }
                         });
 
-                    ui.add_space(10.0);
+                    ui.add_space(8.0);
 
+                    // Primary Execute Button
                     let exec_btn = egui::Button::new(
-                        egui::RichText::new(if self.is_running { "⏳ RUNNING..." } else { "🚀 EXECUTE CLEANUP" })
-                            .strong()
-                            .size(13.0),
+                        egui::RichText::new(if self.is_running {
+                            "⏳ EXECUTING PROTOCOL..."
+                        } else {
+                            "🚀 EXECUTE SELECTED CLEANUP"
+                        })
+                        .strong()
+                        .size(12.5)
+                        .color(egui::Color32::WHITE),
                     )
                     .fill(if self.is_running { BG_CARD } else { RED_PRIMARY })
-                    .min_size(egui::vec2(260.0, 42.0));
+                    .min_size(egui::vec2(ui.available_width(), 38.0));
 
-                    if ui.add_enabled(!self.is_running, exec_btn).clicked() {
+                    if ui.add_enabled(!self.is_running && !self.selected_ids.is_empty(), exec_btn).clicked() {
                         self.is_running = true;
                         let ids: Vec<String> = self.selected_ids.iter().cloned().collect();
                         let tx = self.tx.clone();
                         thread::spawn(move || {
                             CleanerManager::execute_cleanup(&ids, tx);
                         });
-                        set_status("Started system cleanup protocol".into(), GREEN_OK);
+                        set_status("Executing system cleanup protocol...".into(), GREEN_OK);
+                    }
+
+                    ui.add_space(4.0);
+
+                    // 1-Click Quick RAM Boost
+                    let quick_ram_btn = egui::Button::new(
+                        egui::RichText::new("⚡ 1-CLICK QUICK RAM BOOST (NO ROOT)")
+                            .strong()
+                            .size(11.0)
+                            .color(CYAN_INFO),
+                    )
+                    .fill(CYAN_SUBTLE)
+                    .min_size(egui::vec2(ui.available_width(), 30.0));
+
+                    if ui.add_enabled(!self.is_running, quick_ram_btn).clicked() {
+                        self.is_running = true;
+                        let ids = vec!["smart_ram".to_string(), "thumbnail_cache".to_string()];
+                        let tx = self.tx.clone();
+                        thread::spawn(move || {
+                            CleanerManager::execute_cleanup(&ids, tx);
+                        });
+                        set_status("Running 1-Click Smart RAM Boost...".into(), CYAN_INFO);
                     }
                 });
 
-            ui.add_space(8.0);
+            ui.add_space(6.0);
 
-            // Right Pane: Console Output Log
-            egui::Frame::new()
-                .fill(BG_PANEL)
-                .stroke(egui::Stroke::new(1.0, BORDER_DARK))
-                .corner_radius(8)
-                .inner_margin(12)
-                .show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("SYSTEM CLEANER // REALTIME EXECUTION CONSOLE").strong().size(12.0).color(TEXT_MAIN));
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.button("Clear Log").clicked() {
-                                self.logs.clear();
-                            }
-                        });
-                    });
-
-                    ui.add_space(6.0);
-
-                    egui::ScrollArea::vertical()
-                        .stick_to_bottom(true)
-                        .max_height(480.0)
-                        .show(ui, |ui| {
-                            for line in &self.logs {
-                                let color = if line.starts_with("[✓]") {
-                                    GREEN_OK
-                                } else if line.starts_with("[!]") || line.starts_with("[ERR]") {
-                                    RED_BRIGHT
-                                } else if line.starts_with("[*]") {
-                                    egui::Color32::from_rgb(100, 180, 255)
-                                } else {
-                                    egui::Color32::from_rgb(220, 220, 220)
-                                };
-                                ui.label(egui::RichText::new(line).monospace().size(10.5).color(color));
-                            }
-                        });
-                });
+            // Right Pane: Cyber Console Log
+            ui.vertical(|ui| {
+                cyber_console(
+                    ui,
+                    "cleaner_console_scroll",
+                    "SYSTEM CLEANER // REALTIME EXECUTION MATRIX",
+                    &mut self.logs,
+                    415.0,
+                );
+            });
         });
     }
 }
