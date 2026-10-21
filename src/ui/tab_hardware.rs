@@ -106,67 +106,77 @@ impl TabHardware {
 
         ui.add_space(6.0);
 
-        // 1. Top 4-Column Radial Cockpit Arc Dials
-        ui.columns(4, |cols| {
-            let load_frac = self.telemetry.cpu_load_pct / 100.0;
-            let load_color = if self.telemetry.cpu_load_pct >= 80.0 {
-                RED_BRIGHT
-            } else if self.telemetry.cpu_load_pct >= 45.0 {
-                AMBER_WARN
-            } else {
-                CYAN_INFO
-            };
-            radial_dial(
-                &mut cols[0],
+        // 1. Top Radial Cockpit Arc Dials
+        //    4 across is the cockpit layout; the grid drops to 2x2 and then to one dial per row
+        //    when the viewport is too narrow for the readouts to stay readable.
+        let load = self.telemetry.cpu_load_pct;
+        let load_color = if load >= 80.0 {
+            RED_BRIGHT
+        } else if load >= 45.0 {
+            AMBER_WARN
+        } else {
+            CYAN_INFO
+        };
+        let cpu_temp = self.telemetry.cpu_temp;
+        let (cpu_color, cpu_desc) = if cpu_temp >= 80.0 {
+            (RED_BRIGHT, "High Thermal Load")
+        } else if cpu_temp >= 65.0 {
+            (AMBER_WARN, "Warm / Active")
+        } else {
+            (GREEN_OK, "Cooling Normally")
+        };
+        let dials: [(&str, String, String, f32, egui::Color32); 4] = [
+            (
                 "CPU ACTIVITY",
-                &format!("{:.0}%", self.telemetry.cpu_load_pct),
-                &format!("{:.2} GHz • {}", self.telemetry.cpu_freq_ghz, self.telemetry.cpu_governor),
-                load_frac,
+                format!("{load:.0}%"),
+                format!(
+                    "{:.2} GHz • {}",
+                    self.telemetry.cpu_freq_ghz, self.telemetry.cpu_governor
+                ),
+                load / 100.0,
                 load_color,
-            );
-
-            let cpu_t_frac = ((self.telemetry.cpu_temp - 25.0) / 75.0).clamp(0.0, 1.0);
-            let (cpu_color, cpu_desc) = if self.telemetry.cpu_temp >= 80.0 {
-                (RED_BRIGHT, "High Thermal Load")
-            } else if self.telemetry.cpu_temp >= 65.0 {
-                (AMBER_WARN, "Warm / Active")
-            } else {
-                (GREEN_OK, "Cooling Normally")
-            };
-            radial_dial(
-                &mut cols[1],
+            ),
+            (
                 "CPU TEMPERATURE",
-                &format!("{:.0}°C", self.telemetry.cpu_temp),
-                cpu_desc,
-                cpu_t_frac,
+                format!("{cpu_temp:.0}°C"),
+                cpu_desc.to_string(),
+                ((cpu_temp - 25.0) / 75.0).clamp(0.0, 1.0),
                 cpu_color,
-            );
-
-            let gpu_t_frac = ((self.telemetry.gpu_temp - 25.0) / 75.0).clamp(0.0, 1.0);
-            radial_dial(
-                &mut cols[2],
+            ),
+            (
                 "GPU & SSD TEMP",
-                &format!("{:.0}°C", self.telemetry.gpu_temp),
-                &format!("NVMe SSD: {:.0}°C", self.telemetry.nvme_temp),
-                gpu_t_frac,
+                format!("{:.0}°C", self.telemetry.gpu_temp),
+                format!("NVMe SSD: {:.0}°C", self.telemetry.nvme_temp),
+                ((self.telemetry.gpu_temp - 25.0) / 75.0).clamp(0.0, 1.0),
                 RED_PRIMARY,
-            );
-
-            let bat_frac = self.telemetry.battery_pct as f32 / 100.0;
-            let bat_color = if self.telemetry.battery_pct <= 20 {
-                RED_BRIGHT
-            } else {
-                GREEN_OK
-            };
-            radial_dial(
-                &mut cols[3],
+            ),
+            (
                 "BATTERY LEVEL",
-                &format!("{}%", self.telemetry.battery_pct),
-                &format!("{} (Limit {}%)", self.telemetry.battery_status, self.battery_limit),
-                bat_frac,
-                bat_color,
-            );
-        });
+                format!("{}%", self.telemetry.battery_pct),
+                format!(
+                    "{} (Limit {}%)",
+                    self.telemetry.battery_status, self.battery_limit
+                ),
+                self.telemetry.battery_pct as f32 / 100.0,
+                if self.telemetry.battery_pct <= 20 {
+                    RED_BRIGHT
+                } else {
+                    GREEN_OK
+                },
+            ),
+        ];
+
+        let dials_per_row = dial_columns(ui.available_width());
+        for (row_idx, row) in dials.chunks(dials_per_row).enumerate() {
+            if row_idx > 0 {
+                ui.add_space(6.0);
+            }
+            ui.columns(row.len(), |cols| {
+                for (col, dial) in cols.iter_mut().zip(row) {
+                    radial_dial(col, dial.0, &dial.1, &dial.2, dial.3, dial.4);
+                }
+            });
+        }
 
         ui.add_space(6.0);
 
@@ -518,4 +528,26 @@ impl TabHardware {
             );
         });
     }
+
+}
+
+/// How many radial dials fit side by side in `available_width` without squeezing the readouts.
+///
+/// `ui.columns` splits whatever width it is given and does not clamp, so the count has to be
+/// chosen from the space that is actually there: 4 across for the cockpit layout, 2 for a 2x2
+/// grid, and a single dial per row when even two would be unreadable.
+fn dial_columns(available_width: f32) -> usize {
+    /// Narrowest column that still fits a dial title and its value readout.
+    const MIN_DIAL_COL_WIDTH: f32 = 150.0;
+    /// egui's default `item_spacing.x`, which `ui.columns` subtracts before splitting.
+    const COLUMN_SPACING: f32 = 8.0;
+
+    [4, 2]
+        .into_iter()
+        .find(|cols| {
+            let needed =
+                MIN_DIAL_COL_WIDTH * (*cols as f32) + COLUMN_SPACING * (*cols as f32 - 1.0);
+            available_width >= needed
+        })
+        .unwrap_or(1)
 }

@@ -10,6 +10,11 @@ use crate::ui::tab_idevice::TabIDevice;
 use crate::ui::tab_security::TabSecurity;
 use crate::ui::AppTab;
 
+/// Narrowest width the tab body is allowed to lay out in. Tabs split their cards with
+/// `ui.columns`, and `ui.columns` divides whatever width it is handed — a squeezed window
+/// must therefore never hand the body less than a readable width.
+const MIN_VIEWPORT_WIDTH: f32 = 320.0;
+
 pub struct ZaneMegApp {
     pub current_tab: AppTab,
     pub tab_hardware: TabHardware,
@@ -170,178 +175,193 @@ impl eframe::App for ZaneMegApp {
 
         ui.horizontal_top(|ui| {
             // Left Vertical Navigation Sidebar
-            egui::Frame::new()
-                .fill(BG_PANEL)
-                .stroke(egui::Stroke::new(1.0, BORDER_DARK))
-                .corner_radius(8)
-                .inner_margin(10)
-                .show(ui, |ui| {
-                    ui.set_width(225.0);
-                    ui.set_min_height(avail_h - 20.0);
+            // The nav pane body: `Frame::show` inherits the horizontal layout of this split,
+            // which would lay the nav out left-to-right, so give it a vertical layout here.
+            ui.vertical(|ui| {
+                egui::Frame::new()
+                    .fill(BG_PANEL)
+                    .stroke(egui::Stroke::new(1.0, BORDER_DARK))
+                    .corner_radius(8)
+                    .inner_margin(10)
+                    .show(ui, |ui| {
+                        ui.set_width(225.0);
+                        ui.set_min_height(avail_h - 20.0);
 
-                    ui.label(
-                        egui::RichText::new("CONTROL MODULES")
-                            .strong()
-                            .size(10.0)
-                            .color(TEXT_DIM),
-                    );
-                    ui.add_space(4.0);
-
-                    let cpu_badge = format!("{:.0}°C", self.tab_hardware.telemetry.cpu_temp);
-                    let cpu_col = if self.tab_hardware.telemetry.cpu_temp >= 80.0 {
-                        RED_BRIGHT
-                    } else {
-                        GREEN_OK
-                    };
-                    if nav_sidebar_item(
-                        ui,
-                        "F1",
-                        "⚡",
-                        "Hardware & Cooling",
-                        "Fans, Temps & Power Modes",
-                        Some((&cpu_badge, cpu_col)),
-                        self.current_tab == AppTab::Hardware,
-                    ) {
-                        self.current_tab = AppTab::Hardware;
-                    }
-
-                    ui.add_space(4.0);
-
-                    let (ctrl_txt, ctrl_col) = if self.tab_controller.running_pid.is_some() {
-                        ("ONLINE", GREEN_OK)
-                    } else {
-                        ("READY", TEXT_DIM)
-                    };
-                    if nav_sidebar_item(
-                        ui,
-                        "F2",
-                        "🎮",
-                        "Controller Cockpit",
-                        "Gamepad, LEDs & Haptics",
-                        Some((ctrl_txt, ctrl_col)),
-                        self.current_tab == AppTab::Controller,
-                    ) {
-                        self.current_tab = AppTab::Controller;
-                    }
-
-                    ui.add_space(4.0);
-
-                    let ram_badge = if self.tab_cleaner.is_running {
-                        "CLEANING".to_string()
-                    } else {
-                        format!("{:.0}% RAM", self.tab_cleaner.resources.ram_percent)
-                    };
-                    if nav_sidebar_item(
-                        ui,
-                        "F3",
-                        "🧹",
-                        "System Cleaner",
-                        "Free RAM, Cache & Disk",
-                        Some((&ram_badge, CYAN_INFO)),
-                        self.current_tab == AppTab::Cleaner,
-                    ) {
-                        self.current_tab = AppTab::Cleaner;
-                    }
-
-                    ui.add_space(4.0);
-
-                    if nav_sidebar_item(
-                        ui,
-                        "F4",
-                        "🎧",
-                        "Headset Audio",
-                        "Q3 Pro Bluetooth Modes",
-                        Some(("BT SPP", AMBER_WARN)),
-                        self.current_tab == AppTab::Headset,
-                    ) {
-                        self.current_tab = AppTab::Headset;
-                    }
-
-                    ui.add_space(4.0);
-
-                    let (sec_txt, sec_col) = if self.tab_security.is_isolated {
-                        ("LOCKED", RED_BRIGHT)
-                    } else {
-                        ("OPEN", GREEN_OK)
-                    };
-                    if nav_sidebar_item(
-                        ui,
-                        "F5",
-                        "🛡️",
-                        "Network & Guard",
-                        "Firewall, Local IPs & Bridge",
-                        Some((sec_txt, sec_col)),
-                        self.current_tab == AppTab::Security,
-                    ) {
-                        self.current_tab = AppTab::Security;
-                    }
-
-                    ui.add_space(4.0);
-
-                    if nav_sidebar_item(
-                        ui,
-                        "F6",
-                        "📱",
-                        "iOS Device Tools",
-                        "USB Inspector & Tunnel",
-                        Some(("USB", CYAN_INFO)),
-                        self.current_tab == AppTab::IDevice,
-                    ) {
-                        self.current_tab = AppTab::IDevice;
-                    }
-
-                    ui.add_space(12.0);
-                    ui.separator();
-                    ui.add_space(8.0);
-
-                    // Sidebar System Quick-Summary Box
-                    egui::Frame::new()
-                        .fill(BG_VOID)
-                        .stroke(egui::Stroke::new(1.0, BORDER_SUBTLE))
-                        .corner_radius(6)
-                        .inner_margin(10)
-                        .show(ui, |ui| {
-                            ui.set_width(ui.available_width());
-                            ui.label(
-                                egui::RichText::new("SYSTEM SUMMARY")
-                                    .strong()
-                                    .size(9.5)
-                                    .color(CYAN_INFO),
-                            );
-                            ui.add_space(4.0);
-                            ui.label(
-                                egui::RichText::new(format!(
-                                    "• Uptime: {}\n• CPU Clock: {:.2} GHz\n• Governor: {}\n• NVMe SSD: {:.0}°C ({:.0}% Used)\n• Profile: {}",
-                                    self.tab_hardware.telemetry.uptime_formatted,
-                                    self.tab_hardware.telemetry.cpu_freq_ghz,
-                                    self.tab_hardware.telemetry.cpu_governor,
-                                    self.tab_hardware.telemetry.nvme_temp,
-                                    self.tab_cleaner.resources.disk_percent,
-                                    self.tab_hardware.active_profile.to_uppercase(),
-                                ))
+                        ui.label(
+                            egui::RichText::new("CONTROL MODULES")
+                                .strong()
                                 .size(10.0)
-                                .color(TEXT_MUTED),
-                            );
-                        });
-                });
+                                .color(TEXT_DIM),
+                        );
+                        ui.add_space(4.0);
+
+                        let cpu_badge = format!("{:.0}°C", self.tab_hardware.telemetry.cpu_temp);
+                        let cpu_col = if self.tab_hardware.telemetry.cpu_temp >= 80.0 {
+                            RED_BRIGHT
+                        } else {
+                            GREEN_OK
+                        };
+                        if nav_sidebar_item(
+                            ui,
+                            "F1",
+                            "⚡",
+                            "Hardware & Cooling",
+                            "Fans, Temps & Power Modes",
+                            Some((&cpu_badge, cpu_col)),
+                            self.current_tab == AppTab::Hardware,
+                        ) {
+                            self.current_tab = AppTab::Hardware;
+                        }
+
+                        ui.add_space(4.0);
+
+                        let (ctrl_txt, ctrl_col) = if self.tab_controller.running_pid.is_some() {
+                            ("ONLINE", GREEN_OK)
+                        } else {
+                            ("READY", TEXT_DIM)
+                        };
+                        if nav_sidebar_item(
+                            ui,
+                            "F2",
+                            "🎮",
+                            "Controller Cockpit",
+                            "Gamepad, LEDs & Haptics",
+                            Some((ctrl_txt, ctrl_col)),
+                            self.current_tab == AppTab::Controller,
+                        ) {
+                            self.current_tab = AppTab::Controller;
+                        }
+
+                        ui.add_space(4.0);
+
+                        let ram_badge = if self.tab_cleaner.is_running {
+                            "CLEANING".to_string()
+                        } else {
+                            format!("{:.0}% RAM", self.tab_cleaner.resources.ram_percent)
+                        };
+                        if nav_sidebar_item(
+                            ui,
+                            "F3",
+                            "🧹",
+                            "System Cleaner",
+                            "Free RAM, Cache & Disk",
+                            Some((&ram_badge, CYAN_INFO)),
+                            self.current_tab == AppTab::Cleaner,
+                        ) {
+                            self.current_tab = AppTab::Cleaner;
+                        }
+
+                        ui.add_space(4.0);
+
+                        if nav_sidebar_item(
+                            ui,
+                            "F4",
+                            "🎧",
+                            "Headset Audio",
+                            "Q3 Pro Bluetooth Modes",
+                            Some(("BT SPP", AMBER_WARN)),
+                            self.current_tab == AppTab::Headset,
+                        ) {
+                            self.current_tab = AppTab::Headset;
+                        }
+
+                        ui.add_space(4.0);
+
+                        let (sec_txt, sec_col) = if self.tab_security.is_isolated {
+                            ("LOCKED", RED_BRIGHT)
+                        } else {
+                            ("OPEN", GREEN_OK)
+                        };
+                        if nav_sidebar_item(
+                            ui,
+                            "F5",
+                            "🛡️",
+                            "Network & Guard",
+                            "Firewall, Local IPs & Bridge",
+                            Some((sec_txt, sec_col)),
+                            self.current_tab == AppTab::Security,
+                        ) {
+                            self.current_tab = AppTab::Security;
+                        }
+
+                        ui.add_space(4.0);
+
+                        if nav_sidebar_item(
+                            ui,
+                            "F6",
+                            "📱",
+                            "iOS Device Tools",
+                            "USB Inspector & Tunnel",
+                            Some(("USB", CYAN_INFO)),
+                            self.current_tab == AppTab::IDevice,
+                        ) {
+                            self.current_tab = AppTab::IDevice;
+                        }
+
+                        ui.add_space(12.0);
+                        ui.separator();
+                        ui.add_space(8.0);
+
+                        // Sidebar System Quick-Summary Box
+                        egui::Frame::new()
+                            .fill(BG_VOID)
+                            .stroke(egui::Stroke::new(1.0, BORDER_SUBTLE))
+                            .corner_radius(6)
+                            .inner_margin(10)
+                            .show(ui, |ui| {
+                                ui.set_width(ui.available_width());
+                                ui.label(
+                                    egui::RichText::new("SYSTEM SUMMARY")
+                                        .strong()
+                                        .size(9.5)
+                                        .color(CYAN_INFO),
+                                );
+                                ui.add_space(4.0);
+                                ui.label(
+                                    egui::RichText::new(format!(
+                                        "• Uptime: {}\n• CPU Clock: {:.2} GHz\n• Governor: {}\n• NVMe SSD: {:.0}°C ({:.0}% Used)\n• Profile: {}",
+                                        self.tab_hardware.telemetry.uptime_formatted,
+                                        self.tab_hardware.telemetry.cpu_freq_ghz,
+                                        self.tab_hardware.telemetry.cpu_governor,
+                                        self.tab_hardware.telemetry.nvme_temp,
+                                        self.tab_cleaner.resources.disk_percent,
+                                        self.tab_hardware.active_profile.to_uppercase(),
+                                    ))
+                                    .size(10.0)
+                                    .color(TEXT_MUTED),
+                                );
+                            });
+                    });
+            });
 
             ui.add_space(6.0);
 
-            // Right Main Scrollable Tab Viewport
-            egui::ScrollArea::vertical()
-                .id_salt("main_viewport_scroll")
-                .max_height(avail_h)
-                .auto_shrink([false, false])
-                .show(ui, |ui| {
-                    match self.current_tab {
-                        AppTab::Hardware => self.tab_hardware.ui(ui, &mut status_cb),
-                        AppTab::Controller => self.tab_controller.ui(ui, &mut status_cb),
-                        AppTab::Cleaner => self.tab_cleaner.ui(ui, &mut status_cb),
-                        AppTab::Headset => self.tab_headset.ui(ui, &mut status_cb),
-                        AppTab::Security => self.tab_security.ui(ui, &mut status_cb),
-                        AppTab::IDevice => self.tab_idevice.ui(ui, &mut status_cb),
-                    }
-                });
+            // Right Main Scrollable Tab Viewport.
+            // Like the nav pane, the scroll area inherits this horizontal layout, so the tab body
+            // is given an explicit vertical layout here. It is also floored to a readable width:
+            // when the window is squeezed below the nav pane the body would otherwise be handed a
+            // zero (or negative) width, and `ui.columns` divides exactly that width.
+            let viewport_width = ui.available_width().max(MIN_VIEWPORT_WIDTH);
+            ui.allocate_ui_with_layout(
+                egui::vec2(viewport_width, avail_h),
+                egui::Layout::top_down(egui::Align::Min),
+                |ui| {
+                    egui::ScrollArea::vertical()
+                        .id_salt("main_viewport_scroll")
+                        .max_height(avail_h)
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
+                            match self.current_tab {
+                                AppTab::Hardware => self.tab_hardware.ui(ui, &mut status_cb),
+                                AppTab::Controller => self.tab_controller.ui(ui, &mut status_cb),
+                                AppTab::Cleaner => self.tab_cleaner.ui(ui, &mut status_cb),
+                                AppTab::Headset => self.tab_headset.ui(ui, &mut status_cb),
+                                AppTab::Security => self.tab_security.ui(ui, &mut status_cb),
+                                AppTab::IDevice => self.tab_idevice.ui(ui, &mut status_cb),
+                            }
+                        });
+                },
+            );
         });
 
         if let Some((msg, color)) = status_change {

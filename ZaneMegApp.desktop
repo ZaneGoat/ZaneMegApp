@@ -1,0 +1,14 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=ZaneMegApp
+GenericName=System Control Matrix
+Comment=Next-Gen Hardware Matrix, Thermal Telemetry & Controller Space Cockpit (V2.5 Rust)
+Exec=/home/zane/Desktop/ZaneMegApp/run.sh
+Icon=/home/zane/Desktop/ZaneMegApp/assets/icon.svg
+Path=/home/zane/Desktop/ZaneMegApp
+Terminal=false
+Categories=System;HardwareSettings;Utility;
+Keywords=isw;fan;controller;cleaner;hardware;telemetry;
+StartupNotify=true
+StartupWMClass=ZaneMegApp
