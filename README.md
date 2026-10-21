@@ -20,6 +20,12 @@
 [![Display](https://img.shields.io/badge/Display-Wayland%20%2F%20X11-blue?style=for-the-badge&logo=wayland&logoColor=white)](#display--compositor)
 [![Security](https://img.shields.io/badge/Privileges-pkexec%20Strict-black?style=for-the-badge&logo=linux&logoColor=red)](#privilege-architecture)
 
+<br/>
+
+![ZaneMegApp UI Screenshot](assets/screenshot.png)
+
+<br/>
+
 ---
 
 </div>
