@@ -28,7 +28,10 @@ impl ControllerManager {
 
     pub fn launch(&self, tx: Sender<String>) -> Result<u32, String> {
         if !self.script.exists() {
-            return Err(format!("Controller Space start.sh not found at {}", self.script.display()));
+            return Err(format!(
+                "Controller Space start.sh not found at {}",
+                self.script.display()
+            ));
         }
 
         let mut child = Command::new("/bin/bash")
@@ -40,7 +43,8 @@ impl ControllerManager {
             .map_err(|e| format!("Failed to spawn start.sh: {e}"))?;
 
         let pid = child.id();
-        tx.send(format!("[*] Starship Cockpit launched with PID {pid}")).ok();
+        tx.send(format!("[*] Starship Cockpit launched with PID {pid}"))
+            .ok();
 
         // Stream stdout in a thread
         if let Some(stdout) = child.stdout.take() {
@@ -73,8 +77,11 @@ impl ControllerManager {
     }
 
     pub fn stop(pid: u32, tx: &Sender<String>) {
-        tx.send(format!("[*] Stopping Controller Space PID {pid}...")).ok();
-        let _ = Command::new("kill").args(["-TERM", &pid.to_string()]).status();
+        tx.send(format!("[*] Stopping Controller Space PID {pid}..."))
+            .ok();
+        let _ = Command::new("kill")
+            .args(["-TERM", &pid.to_string()])
+            .status();
         // Give it a brief moment then kill -9 if still up
         let _ = Command::new("kill").args(["-9", &pid.to_string()]).status();
         tx.send("[✓] Process terminated.".into()).ok();
@@ -85,17 +92,21 @@ impl ControllerManager {
     }
 
     pub fn open_github() {
-        let _ = Command::new("xdg-open").arg("https://github.com/ZaneGoat/Controler-space").spawn();
+        let _ = Command::new("xdg-open")
+            .arg("https://github.com/ZaneGoat/Controler-space")
+            .spawn();
     }
 
     pub fn launch_led(&self, tx: &Sender<String>) {
         let led_script = self.dir.join("led.py");
         if !led_script.exists() {
-            tx.send(format!("[!] led.py not found at {}", led_script.display())).ok();
+            tx.send(format!("[!] led.py not found at {}", led_script.display()))
+                .ok();
             return;
         }
 
-        tx.send("[*] Launching LED & Rumble Matrix Window...".into()).ok();
+        tx.send("[*] Launching LED & Rumble Matrix Window...".into())
+            .ok();
         let _ = Command::new("python3")
             .arg(&led_script)
             .current_dir(&self.dir)

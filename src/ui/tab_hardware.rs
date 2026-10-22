@@ -1,11 +1,14 @@
+//! Hardware & Cooling: the tab's state and its section order. Each card group lives in
+//! `crate::ui::hardware`.
+
 use eframe::egui;
-use egui_plot::{Legend, Line, Plot, PlotPoints};
 use std::collections::VecDeque;
-use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::mpsc::{Receiver, Sender, channel};
 use std::thread;
 
 use crate::core::hardware::{CpuTimes, HardwareManager, HardwareTelemetry};
 use crate::theme::*;
+use crate::ui::hardware;
 
 pub struct TabHardware {
     pub telemetry: HardwareTelemetry,
@@ -47,10 +50,8 @@ impl TabHardware {
     }
 
     pub fn update_telemetry(&mut self) {
-        self.telemetry = HardwareManager::read_telemetry(
-            &mut self.prev_cpu_overall,
-            &mut self.prev_cpu_cores,
-        );
+        self.telemetry =
+            HardwareManager::read_telemetry(&mut self.prev_cpu_overall, &mut self.prev_cpu_cores);
         self.step_counter += 1;
 
         let x = self.step_counter as f64;
@@ -93,7 +94,6 @@ impl TabHardware {
             }
         }
 
-        // Visual Guide Strip
         legend_strip(
             ui,
             "Real-time temperatures, CPU core activity, display refresh rate, and fan cooling controls.",
@@ -105,449 +105,29 @@ impl TabHardware {
         );
 
         ui.add_space(6.0);
-
-        // 1. Top Radial Cockpit Arc Dials
-        //    4 across is the cockpit layout; the grid drops to 2x2 and then to one dial per row
-        //    when the viewport is too narrow for the readouts to stay readable.
-        let load = self.telemetry.cpu_load_pct;
-        let load_color = if load >= 80.0 {
-            RED_BRIGHT
-        } else if load >= 45.0 {
-            AMBER_WARN
-        } else {
-            CYAN_INFO
-        };
-        let cpu_temp = self.telemetry.cpu_temp;
-        let (cpu_color, cpu_desc) = if cpu_temp >= 80.0 {
-            (RED_BRIGHT, "High Thermal Load")
-        } else if cpu_temp >= 65.0 {
-            (AMBER_WARN, "Warm / Active")
-        } else {
-            (GREEN_OK, "Cooling Normally")
-        };
-        let dials: [(&str, String, String, f32, egui::Color32); 4] = [
-            (
-                "CPU ACTIVITY",
-                format!("{load:.0}%"),
-                format!(
-                    "{:.2} GHz • {}",
-                    self.telemetry.cpu_freq_ghz, self.telemetry.cpu_governor
-                ),
-                load / 100.0,
-                load_color,
-            ),
-            (
-                "CPU TEMPERATURE",
-                format!("{cpu_temp:.0}°C"),
-                cpu_desc.to_string(),
-                ((cpu_temp - 25.0) / 75.0).clamp(0.0, 1.0),
-                cpu_color,
-            ),
-            (
-                "GPU & SSD TEMP",
-                format!("{:.0}°C", self.telemetry.gpu_temp),
-                format!("NVMe SSD: {:.0}°C", self.telemetry.nvme_temp),
-                ((self.telemetry.gpu_temp - 25.0) / 75.0).clamp(0.0, 1.0),
-                RED_PRIMARY,
-            ),
-            (
-                "BATTERY LEVEL",
-                format!("{}%", self.telemetry.battery_pct),
-                format!(
-                    "{} (Limit {}%)",
-                    self.telemetry.battery_status, self.battery_limit
-                ),
-                self.telemetry.battery_pct as f32 / 100.0,
-                if self.telemetry.battery_pct <= 20 {
-                    RED_BRIGHT
-                } else {
-                    GREEN_OK
-                },
-            ),
-        ];
-
-        let dials_per_row = dial_columns(ui.available_width());
-        for (row_idx, row) in dials.chunks(dials_per_row).enumerate() {
-            if row_idx > 0 {
-                ui.add_space(6.0);
-            }
-            ui.columns(row.len(), |cols| {
-                for (col, dial) in cols.iter_mut().zip(row) {
-                    radial_dial(col, dial.0, &dial.1, &dial.2, dial.3, dial.4);
-                }
-            });
-        }
-
+        hardware::dials::dials(self, ui);
         ui.add_space(6.0);
 
-        // 2. Power Profiles Selector Cards
-        let active_badge = format!("CURRENT MODE: {}", self.active_profile.to_uppercase());
-        cyber_card(
-            ui,
-            "1-CLICK SYSTEM POWER PROFILES",
-            Some("Choose how your display, fans, and battery behave"),
-            RED_PRIMARY,
-            Some((&active_badge, RED_BRIGHT, RED_SUBTLE)),
-            |ui| {
-                ui.columns(3, |cols| {
-                    if mode_selector_card(
-                        &mut cols[0],
-                        "🔥",
-                        "EXTREME GAMING",
-                        "🖥️ Screen: 144Hz Ultra Smooth",
-                        "🌀 Fans: 100% Cooler Boost",
-                        "⚡ Power: Maximum AC Speed",
-                        RED_BRIGHT,
-                        self.active_profile == "extreme",
-                    ) {
-                        self.active_profile = "extreme".into();
-                        self.cooler_boost = true;
-                        set_status("Applying EXTREME Gaming Profile...".into(), CYAN_INFO);
-                        let tx = self.tx.clone();
-                        thread::spawn(move || {
-                            let _ = tx.send(HardwareManager::apply_power_profile("extreme"));
-                        });
-                    }
-
-                    if mode_selector_card(
-                        &mut cols[1],
-                        "⚖️",
-                        "BALANCED DAILY",
-                        "🖥️ Screen: 48Hz Power Saving",
-                        "🌀 Fans: Automatic Smart Curve",
-                        "⚡ Power: Balanced AC/Battery",
-                        CYAN_INFO,
-                        self.active_profile == "balance",
-                    ) {
-                        self.active_profile = "balance".into();
-                        self.cooler_boost = false;
-                        set_status("Applying BALANCED Daily Profile...".into(), CYAN_INFO);
-                        let tx = self.tx.clone();
-                        thread::spawn(move || {
-                            let _ = tx.send(HardwareManager::apply_power_profile("balance"));
-                        });
-                    }
-
-                    if mode_selector_card(
-                        &mut cols[2],
-                        "🔋",
-                        "SUPER BATTERY",
-                        "🖥️ Screen: 48Hz Low Power",
-                        "🌀 Fans: Quiet / Silent Mode",
-                        "📡 Radio: Turns Bluetooth OFF",
-                        GREEN_OK,
-                        self.active_profile == "battery",
-                    ) {
-                        self.active_profile = "battery".into();
-                        self.cooler_boost = false;
-                        set_status("Applying SUPER BATTERY Profile...".into(), CYAN_INFO);
-                        let tx = self.tx.clone();
-                        thread::spawn(move || {
-                            let _ = tx.send(HardwareManager::apply_power_profile("battery"));
-                        });
-                    }
-                });
-            },
-        );
-
+        hardware::profiles::power_profiles(self, ui, set_status);
         ui.add_space(6.0);
 
-        // 3. Dual Cards: Fan Cooling Controls & Battery Health Cap
-        ui.columns(2, |cols| {
-            // Left: Fan Cooling Matrix
-            let boost_badge = if self.cooler_boost {
-                ("MAX RPM ACTIVE", RED_BRIGHT, RED_SUBTLE)
+        // Fan controls beside the battery ceiling; one above the other when both cannot fit.
+        grid(ui, 2, 2, 300.0, 6.0, |column, index| {
+            if index == 0 {
+                hardware::fan_battery::fan_controls(self, column, set_status);
             } else {
-                ("AUTO COOLING", GREEN_OK, GREEN_SUBTLE)
-            };
-
-            cyber_card(
-                &mut cols[0],
-                "FAN COOLING CONTROLS",
-                Some("Override or automate laptop fans"),
-                RED_PRIMARY,
-                Some(boost_badge),
-                |ui| {
-                    let boost_title = if self.cooler_boost {
-                        "Cooler Boost is ON (100% Max Fan Speed)"
-                    } else {
-                        "Toggle Cooler Boost (100% Max Fan Speed)"
-                    };
-                    let boost_tag = if self.cooler_boost { ("ON", RED_BRIGHT) } else { ("OFF", TEXT_MUTED) };
-
-                    if action_card_button(
-                        ui,
-                        "❄️",
-                        boost_title,
-                        "Forces both CPU and GPU fans to spin at maximum RPM immediately",
-                        Some(boost_tag),
-                        RED_BRIGHT,
-                        self.cooler_boost,
-                    ) {
-                        self.cooler_boost = !self.cooler_boost;
-                        let target = self.cooler_boost;
-                        set_status(
-                            format!("Setting Cooler Boost {}...", if target { "ON" } else { "OFF" }),
-                            CYAN_INFO,
-                        );
-                        let tx = self.tx.clone();
-                        thread::spawn(move || {
-                            let _ = tx.send(HardwareManager::set_cooler_boost(target));
-                        });
-                    }
-
-                    ui.add_space(4.0);
-
-                    let smart_tag = if self.smart_boost {
-                        ("ENABLED", GREEN_OK)
-                    } else {
-                        ("DISABLED", TEXT_DIM)
-                    };
-                    if action_card_button(
-                        ui,
-                        "🤖",
-                        "Auto Smart Thermostat (80°C Trigger)",
-                        "Automatically turns ON Cooler Boost if CPU or GPU reaches 80°C",
-                        Some(smart_tag),
-                        CYAN_INFO,
-                        self.smart_boost,
-                    ) {
-                        self.smart_boost = !self.smart_boost;
-                        set_status(
-                            format!(
-                                "Smart Thermostat {}",
-                                if self.smart_boost { "ENABLED" } else { "DISABLED" }
-                            ),
-                            GREEN_OK,
-                        );
-                    }
-
-                    ui.add_space(4.0);
-
-                    ui.columns(2, |sub_cols| {
-                        if action_card_button(
-                            &mut sub_cols[0],
-                            "📈",
-                            "Custom Fan Curve",
-                            "Load tuned MSI 16G41 table",
-                            None,
-                            RED_PRIMARY,
-                            false,
-                        ) {
-                            set_status("Applying ISW custom curve (16G41)...".into(), CYAN_INFO);
-                            let tx = self.tx.clone();
-                            thread::spawn(move || {
-                                let _ = tx.send(HardwareManager::apply_custom_fan_curve());
-                            });
-                        }
-
-                        if action_card_button(
-                            &mut sub_cols[1],
-                            "🔄",
-                            "Reset BIOS Auto",
-                            "Return fans to default curve",
-                            None,
-                            GREEN_OK,
-                            false,
-                        ) {
-                            self.cooler_boost = false;
-                            set_status("Resetting fans to BIOS auto...".into(), CYAN_INFO);
-                            let tx = self.tx.clone();
-                            thread::spawn(move || {
-                                let _ = tx.send(HardwareManager::reset_fans_auto());
-                            });
-                        }
-                    });
-                },
-            );
-
-            // Right: Battery Health Cap
-            let cap_badge = format!("CHARGE CEILING: {}%", self.battery_limit);
-            cyber_card(
-                &mut cols[1],
-                "BATTERY LIFESPAN PROTECTION",
-                Some("Stop charging early to prevent battery wear"),
-                GREEN_OK,
-                Some((&cap_badge, GREEN_OK, GREEN_SUBTLE)),
-                |ui| {
-                    ui.columns(3, |b_cols| {
-                        if mode_selector_card(
-                            &mut b_cols[0],
-                            "🛡️",
-                            "60% MAX LIFE",
-                            "• Best if always plugged in",
-                            "• Minimizes cell voltage stress",
-                            "• Doubles battery lifespan",
-                            GREEN_OK,
-                            self.battery_limit == 60,
-                        ) {
-                            self.battery_limit = 60;
-                            set_status("Setting battery charge limit to 60%...".into(), CYAN_INFO);
-                            let tx = self.tx.clone();
-                            thread::spawn(move || {
-                                let _ = tx.send(HardwareManager::set_battery_limit(60));
-                            });
-                        }
-
-                        if mode_selector_card(
-                            &mut b_cols[1],
-                            "⚖️",
-                            "80% BALANCED",
-                            "• Ideal for mixed daily use",
-                            "• Prevents 100% heat wear",
-                            "• Good portable runtime",
-                            CYAN_INFO,
-                            self.battery_limit == 80,
-                        ) {
-                            self.battery_limit = 80;
-                            set_status("Setting battery charge limit to 80%...".into(), CYAN_INFO);
-                            let tx = self.tx.clone();
-                            thread::spawn(move || {
-                                let _ = tx.send(HardwareManager::set_battery_limit(80));
-                            });
-                        }
-
-                        if mode_selector_card(
-                            &mut b_cols[2],
-                            "⚡",
-                            "100% FULL TRIP",
-                            "• Charges battery to 100%",
-                            "• Maximum unplugged hours",
-                            "• Use before travel",
-                            AMBER_WARN,
-                            self.battery_limit == 100,
-                        ) {
-                            self.battery_limit = 100;
-                            set_status("Setting battery charge limit to 100%...".into(), CYAN_INFO);
-                            let tx = self.tx.clone();
-                            thread::spawn(move || {
-                                let _ = tx.send(HardwareManager::set_battery_limit(100));
-                            });
-                        }
-                    });
-
-                    ui.add_space(6.0);
-                    egui::Frame::new()
-                        .fill(BG_VOID)
-                        .corner_radius(6)
-                        .inner_margin(8)
-                        .show(ui, |ui| {
-                            ui.label(
-                                egui::RichText::new(
-                                    "ℹ️ Tip: Keeping a lithium-ion battery at 60%–80% while on AC power prevents chemical degradation and swelling.",
-                                )
-                                .size(9.5)
-                                .color(TEXT_MUTED),
-                            );
-                        });
-                },
-            );
+                hardware::profiles::battery_ceiling(self, column, set_status);
+            }
         });
 
         ui.add_space(6.0);
 
-        // 4. Realtime Thermal Waveform & 12-Core Activity
-        ui.columns(2, |cols| {
-            cyber_card(
-                &mut cols[0],
-                "TEMPERATURE HISTORY (LAST 60 SECONDS)",
-                Some("Live sensor graph"),
-                RED_PRIMARY,
-                None,
-                |ui| {
-                    let cpu_pts: Vec<[f64; 2]> = self.cpu_history.iter().copied().collect();
-                    let gpu_pts: Vec<[f64; 2]> = self.gpu_history.iter().copied().collect();
-                    let nvme_pts: Vec<[f64; 2]> = self.nvme_history.iter().copied().collect();
-
-                    let plot = Plot::new("thermal_plot")
-                        .legend(Legend::default())
-                        .height(135.0)
-                        .include_y(25.0)
-                        .include_y(95.0)
-                        .show_axes([false, true])
-                        .allow_zoom(false)
-                        .allow_drag(false)
-                        .allow_scroll(false);
-
-                    plot.show(ui, |plot_ui| {
-                        plot_ui.line(
-                            Line::new("CPU (°C)", PlotPoints::new(cpu_pts))
-                                .color(RED_BRIGHT)
-                                .width(2.2),
-                        );
-                        plot_ui.line(
-                            Line::new("GPU/Zone (°C)", PlotPoints::new(gpu_pts))
-                                .color(AMBER_WARN)
-                                .width(1.8),
-                        );
-                        plot_ui.line(
-                            Line::new("NVMe SSD (°C)", PlotPoints::new(nvme_pts))
-                                .color(CYAN_INFO)
-                                .width(1.5),
-                        );
-                    });
-                },
-            );
-
-            cyber_card(
-                &mut cols[1],
-                "12-CORE PROCESSOR ACTIVITY",
-                Some("Per-thread load on Intel Core i5-10500H"),
-                CYAN_INFO,
-                None,
-                |ui| {
-                    let n = self.telemetry.core_loads.len().min(12);
-                    if n >= 6 {
-                        ui.columns(3, |c| {
-                            for i in 0..3 {
-                                mini_core_bar(&mut c[i], i, self.telemetry.core_loads[i]);
-                            }
-                        });
-                        ui.add_space(3.0);
-                        ui.columns(3, |c| {
-                            for i in 3..6 {
-                                mini_core_bar(&mut c[i - 3], i, self.telemetry.core_loads[i]);
-                            }
-                        });
-                        if n >= 12 {
-                            ui.add_space(3.0);
-                            ui.columns(3, |c| {
-                                for i in 6..9 {
-                                    mini_core_bar(&mut c[i - 6], i, self.telemetry.core_loads[i]);
-                                }
-                            });
-                            ui.add_space(3.0);
-                            ui.columns(3, |c| {
-                                for i in 9..12 {
-                                    mini_core_bar(&mut c[i - 9], i, self.telemetry.core_loads[i]);
-                                }
-                            });
-                        }
-                    }
-                },
-            );
+        grid(ui, 2, 2, 300.0, 6.0, |column, index| {
+            if index == 0 {
+                hardware::plots::thermal_history(self, column);
+            } else {
+                hardware::plots::cores(self, column);
+            }
         });
     }
-
-}
-
-/// How many radial dials fit side by side in `available_width` without squeezing the readouts.
-///
-/// `ui.columns` splits whatever width it is given and does not clamp, so the count has to be
-/// chosen from the space that is actually there: 4 across for the cockpit layout, 2 for a 2x2
-/// grid, and a single dial per row when even two would be unreadable.
-fn dial_columns(available_width: f32) -> usize {
-    /// Narrowest column that still fits a dial title and its value readout.
-    const MIN_DIAL_COL_WIDTH: f32 = 150.0;
-    /// egui's default `item_spacing.x`, which `ui.columns` subtracts before splitting.
-    const COLUMN_SPACING: f32 = 8.0;
-
-    [4, 2]
-        .into_iter()
-        .find(|cols| {
-            let needed =
-                MIN_DIAL_COL_WIDTH * (*cols as f32) + COLUMN_SPACING * (*cols as f32 - 1.0);
-            available_width >= needed
-        })
-        .unwrap_or(1)
 }

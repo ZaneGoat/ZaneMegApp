@@ -49,7 +49,10 @@ impl SecurityManager {
     /// Reads active IPv4 network interfaces for Pentest LHOST quick-reference
     pub fn read_interfaces() -> Vec<NetInterface> {
         let mut list = Vec::new();
-        if let Ok(out) = Command::new("ip").args(["-4", "-br", "addr", "show"]).output() {
+        if let Ok(out) = Command::new("ip")
+            .args(["-4", "-br", "addr", "show"])
+            .output()
+        {
             let stdout = String::from_utf8_lossy(&out.stdout);
             for line in stdout.lines() {
                 let parts: Vec<&str> = line.split_whitespace().collect();
@@ -82,10 +85,10 @@ impl SecurityManager {
                 let parts: Vec<&str> = line.split_whitespace().collect();
                 if parts.len() >= 4 {
                     let local_addr = parts[3];
-                    if let Some(port_str) = local_addr.rsplit(':').next() {
-                        if let Ok(p) = port_str.parse::<u16>() {
-                            ports.insert(p);
-                        }
+                    if let Some(port_str) = local_addr.rsplit(':').next()
+                        && let Ok(p) = port_str.parse::<u16>()
+                    {
+                        ports.insert(p);
                     }
                 }
             }
@@ -103,7 +106,10 @@ impl SecurityManager {
 
         if out.status.success() {
             let _ = Command::new("notify-send")
-                .args(["ZaneMegApp", "🤖 Waydroid Docker/NAT Bridge Rules Injected!"])
+                .args([
+                    "ZaneMegApp",
+                    "🤖 Waydroid Docker/NAT Bridge Rules Injected!",
+                ])
                 .spawn();
             Ok("Waydroid DOCKER-USER & NAT MASQUERADE rules injected".into())
         } else {

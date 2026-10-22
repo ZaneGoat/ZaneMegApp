@@ -1,4 +1,5 @@
 use std::fs;
+use std::path::Path;
 use std::process::Command;
 
 pub const ISW_SECTION: &str = "16G41";
@@ -44,6 +45,22 @@ impl Default for HardwareTelemetry {
             uptime_formatted: "0h 00m".into(),
         }
     }
+}
+
+/// A hwmon `temp*_input` or thermal-zone file, in °C. Both report millidegrees.
+fn temperature_c(path: &Path) -> Option<f32> {
+    fs::read_to_string(path)
+        .ok()?
+        .trim()
+        .parse::<f32>()
+        .ok()
+        .map(|millidegrees| millidegrees / 1000.0)
+}
+
+/// The hwmon sensor names that carry the discrete GPU's temperature, across nouveau, the
+/// proprietary NVIDIA driver and amdgpu.
+fn is_gpu_sensor(name: &str) -> bool {
+    name.contains("nouveau") || name.contains("nvidia") || name.contains("amdgpu")
 }
 
 pub struct HardwareManager;
@@ -139,80 +156,70 @@ impl HardwareManager {
         // 1. Scan /sys/class/hwmon for coretemp, nvme, and GPU sensors
         if let Ok(entries) = fs::read_dir("/sys/class/hwmon") {
             for entry in entries.flatten() {
-                let p = entry.path();
-                if let Ok(name) = fs::read_to_string(p.join("name")) {
-                    let name = name.trim();
-                    if name == "coretemp" {
-                        if let Ok(t) = fs::read_to_string(p.join("temp1_input")) {
-                            if let Ok(raw) = t.trim().parse::<f32>() {
-                                telem.cpu_temp = raw / 1000.0;
-                            }
-                        }
-                    } else if name == "nvme" {
-                        if let Ok(t) = fs::read_to_string(p.join("temp1_input")) {
-                            if let Ok(raw) = t.trim().parse::<f32>() {
-                                telem.nvme_temp = raw / 1000.0;
-                            }
-                        }
-                    } else if name.contains("nouveau") || name.contains("nvidia") || name.contains("amdgpu") {
-                        if let Ok(t) = fs::read_to_string(p.join("temp1_input")) {
-                            if let Ok(raw) = t.trim().parse::<f32>() {
-                                telem.gpu_temp = raw / 1000.0;
-                            }
-                        }
+                let path = entry.path();
+                if let Ok(name) = fs::read_to_string(path.join("name")) {
+                    // Which reading this sensor feeds. Anything else in hwmon is not ours and is
+                    // skipped before its temp file is read.
+                    let slot = match name.trim() {
+                        "coretemp" => &mut telem.cpu_temp,
+                        "nvme" => &mut telem.nvme_temp,
+                        name if is_gpu_sensor(name) => &mut telem.gpu_temp,
+                        _ => continue,
+                    };
+                    // A sensor that will not read keeps its previous value rather than zeroing it.
+                    if let Some(celsius) = temperature_c(&path.join("temp1_input")) {
+                        *slot = celsius;
                     }
                 }
             }
         }
 
         // Fallback CPU temp from thermal_zone0
-        if telem.cpu_temp == 0.0 {
-            if let Ok(temp_str) = fs::read_to_string("/sys/class/thermal/thermal_zone0/temp") {
-                if let Ok(raw) = temp_str.trim().parse::<f32>() {
-                    telem.cpu_temp = raw / 1000.0;
-                }
-            }
+        if telem.cpu_temp == 0.0
+            && let Some(celsius) = temperature_c(Path::new("/sys/class/thermal/thermal_zone0/temp"))
+        {
+            telem.cpu_temp = celsius;
         }
 
         // Fallback secondary thermal zone for GPU / PCH
-        if telem.gpu_temp == 0.0 {
-            if let Ok(temp_str) = fs::read_to_string("/sys/class/thermal/thermal_zone1/temp") {
-                if let Ok(raw) = temp_str.trim().parse::<f32>() {
-                    telem.gpu_temp = raw / 1000.0;
-                }
-            }
+        if telem.gpu_temp == 0.0
+            && let Some(celsius) = temperature_c(Path::new("/sys/class/thermal/thermal_zone1/temp"))
+        {
+            telem.gpu_temp = celsius;
         }
 
         // 2. Read CPU Frequency & Governor
-        if let Ok(freq_str) = fs::read_to_string("/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq") {
-            if let Ok(khz) = freq_str.trim().parse::<f32>() {
-                telem.cpu_freq_ghz = khz / 1_000_000.0;
-            }
+        if let Ok(freq_str) =
+            fs::read_to_string("/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq")
+            && let Ok(khz) = freq_str.trim().parse::<f32>()
+        {
+            telem.cpu_freq_ghz = khz / 1_000_000.0;
         }
-        if let Ok(gov_str) = fs::read_to_string("/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor") {
+        if let Ok(gov_str) =
+            fs::read_to_string("/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor")
+        {
             telem.cpu_governor = gov_str.trim().to_uppercase();
         }
 
         // 3. Read Battery Capacity & Status
-        if let Ok(cap_str) = fs::read_to_string("/sys/class/power_supply/BAT1/capacity") {
-            if let Ok(cap) = cap_str.trim().parse::<u32>() {
-                telem.battery_pct = cap;
-            }
+        if let Ok(cap_str) = fs::read_to_string("/sys/class/power_supply/BAT1/capacity")
+            && let Ok(cap) = cap_str.trim().parse::<u32>()
+        {
+            telem.battery_pct = cap;
         }
         if let Ok(stat_str) = fs::read_to_string("/sys/class/power_supply/BAT1/status") {
             telem.battery_status = stat_str.trim().to_string();
         }
 
         // 4. Read System Uptime from /proc/uptime
-        if let Ok(up_str) = fs::read_to_string("/proc/uptime") {
-            if let Some(first) = up_str.split_whitespace().next() {
-                if let Ok(secs_f) = first.parse::<f64>() {
-                    let total_secs = secs_f as u64;
-                    let hours = total_secs / 3600;
-                    let mins = (total_secs % 3600) / 60;
-                    telem.uptime_formatted = format!("{hours}h {mins:02}m");
-                }
-            }
+        if let Ok(up_str) = fs::read_to_string("/proc/uptime")
+            && let Some(first) = up_str.split_whitespace().next()
+            && let Ok(secs_f) = first.parse::<f64>()
+        {
+            let total_secs = secs_f as u64;
+            let hours = total_secs / 3600;
+            let mins = (total_secs % 3600) / 60;
+            telem.uptime_formatted = format!("{hours}h {mins:02}m");
         }
 
         telem
@@ -246,19 +253,33 @@ impl HardwareManager {
     pub fn apply_power_profile(profile: &str) -> Result<String, String> {
         match profile {
             "extreme" => {
-                let _ = Command::new("kscreen-doctor").arg("output.1.mode.1").status();
-                let _ = Command::new("rfkill").args(["unblock", "bluetooth"]).status();
+                let _ = Command::new("kscreen-doctor")
+                    .arg("output.1.mode.1")
+                    .status();
+                let _ = Command::new("rfkill")
+                    .args(["unblock", "bluetooth"])
+                    .status();
                 let _ = Command::new("pkexec")
                     .args(["bash", "-c", "tlp ac >/dev/null 2>&1; isw -b on"])
                     .status();
                 let _ = Command::new("notify-send")
-                    .args(["ZaneMegApp", "🔥 EXTREME Mode Active (144Hz + Cooler Boost)"])
+                    .args([
+                        "ZaneMegApp",
+                        "🔥 EXTREME Mode Active (144Hz + Cooler Boost)",
+                    ])
                     .spawn();
-                Ok("Applied EXTREME profile: 144Hz, Full Power, Bluetooth ON, Cooler Boost ON".into())
+                Ok(
+                    "Applied EXTREME profile: 144Hz, Full Power, Bluetooth ON, Cooler Boost ON"
+                        .into(),
+                )
             }
             "balance" => {
-                let _ = Command::new("kscreen-doctor").arg("output.1.mode.2").status();
-                let _ = Command::new("rfkill").args(["unblock", "bluetooth"]).status();
+                let _ = Command::new("kscreen-doctor")
+                    .arg("output.1.mode.2")
+                    .status();
+                let _ = Command::new("rfkill")
+                    .args(["unblock", "bluetooth"])
+                    .status();
                 let _ = Command::new("pkexec")
                     .args(["bash", "-c", "tlp start >/dev/null 2>&1; isw -b off"])
                     .status();
@@ -268,7 +289,9 @@ impl HardwareManager {
                 Ok("Applied BALANCE profile: 48Hz, Smart Fans, Daily Power".into())
             }
             "battery" => {
-                let _ = Command::new("kscreen-doctor").arg("output.1.mode.2").status();
+                let _ = Command::new("kscreen-doctor")
+                    .arg("output.1.mode.2")
+                    .status();
                 let _ = Command::new("rfkill").args(["block", "bluetooth"]).status();
                 let _ = Command::new("pkexec")
                     .args(["bash", "-c", "tlp bat >/dev/null 2>&1; isw -b off"])

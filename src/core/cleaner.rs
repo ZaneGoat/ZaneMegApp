@@ -146,8 +146,12 @@ impl CleanerManager {
             for line in meminfo.lines() {
                 let mut parts = line.split_whitespace();
                 let Some(key) = parts.next() else { continue };
-                let Some(val_str) = parts.next() else { continue };
-                let Ok(val) = val_str.parse::<u64>() else { continue };
+                let Some(val_str) = parts.next() else {
+                    continue;
+                };
+                let Ok(val) = val_str.parse::<u64>() else {
+                    continue;
+                };
 
                 match key {
                     "MemTotal:" => mem_total_kb = val,
@@ -206,22 +210,34 @@ impl CleanerManager {
 
         if let Ok(entries) = fs::read_dir("/proc") {
             for entry in entries.flatten() {
-                let Ok(fname) = entry.file_name().into_string() else { continue };
-                let Ok(pid) = fname.parse::<u32>() else { continue };
+                let Ok(fname) = entry.file_name().into_string() else {
+                    continue;
+                };
+                let Ok(pid) = fname.parse::<u32>() else {
+                    continue;
+                };
                 if pid <= 2 || pid == my_pid {
                     continue;
                 }
 
                 let path = entry.path();
-                let Ok(statm) = fs::read_to_string(path.join("statm")) else { continue };
-                let Some(rss_str) = statm.split_whitespace().nth(1) else { continue };
-                let Ok(rss_pages) = rss_str.parse::<u64>() else { continue };
+                let Ok(statm) = fs::read_to_string(path.join("statm")) else {
+                    continue;
+                };
+                let Some(rss_str) = statm.split_whitespace().nth(1) else {
+                    continue;
+                };
+                let Ok(rss_pages) = rss_str.parse::<u64>() else {
+                    continue;
+                };
                 let rss_mb = (rss_pages * 4) as f32 / 1024.0;
                 if rss_mb < 15.0 {
                     continue;
                 }
 
-                let Ok(comm) = fs::read_to_string(path.join("comm")) else { continue };
+                let Ok(comm) = fs::read_to_string(path.join("comm")) else {
+                    continue;
+                };
                 procs.push((pid, comm.trim().to_string(), rss_mb));
             }
         }
@@ -233,13 +249,21 @@ impl CleanerManager {
 
     /// Sends SIGTERM to a target PID from the Live RAM Hogs Sniper
     pub fn snipe_process(pid: u32, name: &str, tx: &Sender<String>) {
-        let res = Command::new("kill").args(["-15", &pid.to_string()]).status();
+        let res = Command::new("kill")
+            .args(["-15", &pid.to_string()])
+            .status();
         match res {
             Ok(s) if s.success() => {
-                tx.send(format!("[✓] SNIPED process '{name}' (PID {pid}) via SIGTERM.")).ok();
+                tx.send(format!(
+                    "[✓] SNIPED process '{name}' (PID {pid}) via SIGTERM."
+                ))
+                .ok();
             }
             _ => {
-                tx.send(format!("[!] Could not terminate '{name}' (PID {pid}) — may require root.")).ok();
+                tx.send(format!(
+                    "[!] Could not terminate '{name}' (PID {pid}) — may require root."
+                ))
+                .ok();
             }
         }
     }
@@ -247,13 +271,15 @@ impl CleanerManager {
     pub fn execute_cleanup(selected_ids: &[String], tx: Sender<String>) {
         let before = Self::read_system_resources();
 
-        tx.send("============================================================".into()).ok();
+        tx.send("============================================================".into())
+            .ok();
         tx.send(format!(
             "[*] STARTING CLEANUP // Pre-Scan RAM: {:.2} GB ({:.0}%) | Disk: {:.1} GB",
             before.ram_used_gb, before.ram_percent, before.disk_used_gb
         ))
         .ok();
-        tx.send("============================================================".into()).ok();
+        tx.send("============================================================".into())
+            .ok();
 
         // 1. Run non-root modules immediately
         for mod_id in selected_ids {
@@ -272,14 +298,18 @@ impl CleanerManager {
         for mod_id in selected_ids {
             match mod_id.as_str() {
                 "kernel_cache" => {
-                    root_script_lines.push("echo '[*] Executing: RAM Kernel Cache Flush...'".into());
+                    root_script_lines
+                        .push("echo '[*] Executing: RAM Kernel Cache Flush...'".into());
                     root_script_lines.push("sync && echo 3 > /proc/sys/vm/drop_caches && sysctl -w vm.compact_memory=1 >/dev/null 2>&1 || true".into());
-                    root_script_lines.push("echo '[✓] Kernel page cache flushed and memory compacted.'".into());
+                    root_script_lines
+                        .push("echo '[✓] Kernel page cache flushed and memory compacted.'".into());
                 }
                 "service_opt" => {
-                    root_script_lines.push("echo '[*] Executing: Background Service Optimizer...'".into());
+                    root_script_lines
+                        .push("echo '[*] Executing: Background Service Optimizer...'".into());
                     root_script_lines.push("systemctl stop cups.service cups-browsed.service ModemManager.service avahi-daemon.service 2>/dev/null || true".into());
-                    root_script_lines.push("echo '[✓] Non-essential system services stopped.'".into());
+                    root_script_lines
+                        .push("echo '[✓] Non-essential system services stopped.'".into());
                 }
                 "swap_reset" => {
                     root_script_lines.push("echo '[*] Resetting Swap Memory...'".into());
@@ -288,21 +318,28 @@ impl CleanerManager {
                 }
                 "apt_cache" => {
                     root_script_lines.push("echo '[*] Cleaning APT package cache...'".into());
-                    root_script_lines.push("apt-get clean && apt-get autoclean -y && apt-get autoremove -y".into());
-                    root_script_lines.push("echo '[✓] APT caches and orphaned packages cleaned.'".into());
+                    root_script_lines.push(
+                        "apt-get clean && apt-get autoclean -y && apt-get autoremove -y".into(),
+                    );
+                    root_script_lines
+                        .push("echo '[✓] APT caches and orphaned packages cleaned.'".into());
                 }
                 "journal_logs" => {
-                    root_script_lines.push("echo '[*] Vacuuming systemd journal logs to 100M...'".into());
-                    root_script_lines.push("journalctl --vacuum-size=100M >/dev/null 2>&1 || true".into());
+                    root_script_lines
+                        .push("echo '[*] Vacuuming systemd journal logs to 100M...'".into());
+                    root_script_lines
+                        .push("journalctl --vacuum-size=100M >/dev/null 2>&1 || true".into());
                     root_script_lines.push("echo '[✓] Journal vacuum complete.'".into());
                 }
                 "flatpak_unused" => {
                     root_script_lines.push("echo '[*] Removing unused Flatpak runtimes...'".into());
-                    root_script_lines.push("flatpak uninstall --unused -y 2>/dev/null || true".into());
+                    root_script_lines
+                        .push("flatpak uninstall --unused -y 2>/dev/null || true".into());
                     root_script_lines.push("echo '[✓] Unused Flatpak runtimes removed.'".into());
                 }
                 "docker_prune" => {
-                    root_script_lines.push("echo '[*] Pruning unused Docker containers and images...'".into());
+                    root_script_lines
+                        .push("echo '[*] Pruning unused Docker containers and images...'".into());
                     root_script_lines.push("docker container prune -f >/dev/null 2>&1; docker image prune -f >/dev/null 2>&1 || true".into());
                     root_script_lines.push("echo '[✓] Docker resources pruned.'".into());
                 }
@@ -311,7 +348,11 @@ impl CleanerManager {
         }
 
         if !root_script_lines.is_empty() {
-            tx.send("[*] Requesting root elevation (single Polkit prompt) for privileged tasks...".into()).ok();
+            tx.send(
+                "[*] Requesting root elevation (single Polkit prompt) for privileged tasks..."
+                    .into(),
+            )
+            .ok();
             let combined_script = root_script_lines.join("\n");
             match Command::new("pkexec")
                 .args(["bash", "-c", &combined_script])
@@ -341,10 +382,14 @@ impl CleanerManager {
                         });
                     }
                     let status = child.wait();
-                    if let Ok(s) = status {
-                        if !s.success() {
-                            tx.send("[!] Root batch exited with non-zero status (or auth cancelled).".into()).ok();
-                        }
+                    if let Ok(s) = status
+                        && !s.success()
+                    {
+                        tx.send(
+                            "[!] Root batch exited with non-zero status (or auth cancelled)."
+                                .into(),
+                        )
+                        .ok();
                     }
                 }
                 Err(e) => {
@@ -357,25 +402,38 @@ impl CleanerManager {
         let ram_freed_mb = ((before.ram_used_gb - after.ram_used_gb) * 1024.0).max(0.0);
         let disk_freed_mb = ((before.disk_used_gb - after.disk_used_gb) * 1024.0).max(0.0);
 
-        tx.send("============================================================".into()).ok();
+        tx.send("============================================================".into())
+            .ok();
         tx.send(format!(
             "[✓] RECLAIMED // RAM Freed: {:.0} MB | Disk Freed: {:.0} MB",
             ram_freed_mb, disk_freed_mb
         ))
         .ok();
         tx.send("[✓] SYSTEM CLEANUP PROTOCOL COMPLETED".into()).ok();
-        tx.send("============================================================".into()).ok();
+        tx.send("============================================================".into())
+            .ok();
     }
 
     fn run_smart_ram(tx: &Sender<String>) {
         tx.send("[*] Executing: Smart RAM Optimizer...".into()).ok();
 
         let bloat_patterns = [
-            "tracker-miner", "tracker-extract", "tracker-store",
-            "evolution-data", "evolution-calendar", "evolution-address",
-            "goa-daemon", "zeitgeist", "baloo_file", "akonadi_",
-            "gnome-software", "packagekitd", "update-notifier",
-            "gsd-housekeeping", "at-spi-bus", "xdg-desktop-portal",
+            "tracker-miner",
+            "tracker-extract",
+            "tracker-store",
+            "evolution-data",
+            "evolution-calendar",
+            "evolution-address",
+            "goa-daemon",
+            "zeitgeist",
+            "baloo_file",
+            "akonadi_",
+            "gnome-software",
+            "packagekitd",
+            "update-notifier",
+            "gsd-housekeeping",
+            "at-spi-bus",
+            "xdg-desktop-portal",
             "tumblerd",
         ];
 
@@ -384,19 +442,22 @@ impl CleanerManager {
 
         if let Ok(entries) = fs::read_dir("/proc") {
             for entry in entries.flatten() {
-                if let Ok(file_name) = entry.file_name().into_string() {
-                    if let Ok(pid) = file_name.parse::<u32>() {
-                        if pid == my_pid || pid == 1 {
-                            continue;
-                        }
-                        let comm_path = entry.path().join("comm");
-                        if let Ok(comm) = fs::read_to_string(comm_path) {
-                            let comm = comm.trim();
-                            if bloat_patterns.iter().any(|pat| comm.contains(pat)) {
-                                let _ = Command::new("kill").args(["-15", &pid.to_string()]).status();
-                                tx.send(format!("  → Sent SIGTERM to {comm} (PID {pid})")).ok();
-                                killed_count += 1;
-                            }
+                if let Ok(file_name) = entry.file_name().into_string()
+                    && let Ok(pid) = file_name.parse::<u32>()
+                {
+                    if pid == my_pid || pid == 1 {
+                        continue;
+                    }
+                    let comm_path = entry.path().join("comm");
+                    if let Ok(comm) = fs::read_to_string(comm_path) {
+                        let comm = comm.trim();
+                        if bloat_patterns.iter().any(|pat| comm.contains(pat)) {
+                            let _ = Command::new("kill")
+                                .args(["-15", &pid.to_string()])
+                                .status();
+                            tx.send(format!("  → Sent SIGTERM to {comm} (PID {pid})"))
+                                .ok();
+                            killed_count += 1;
                         }
                     }
                 }
@@ -404,9 +465,13 @@ impl CleanerManager {
         }
 
         if killed_count > 0 {
-            tx.send(format!("[RAM] Terminated {killed_count} background bloat processes.")).ok();
+            tx.send(format!(
+                "[RAM] Terminated {killed_count} background bloat processes."
+            ))
+            .ok();
         } else {
-            tx.send("[RAM] No background bloat processes found running.".into()).ok();
+            tx.send("[RAM] No background bloat processes found running.".into())
+                .ok();
         }
 
         let heavy_services = [
@@ -418,14 +483,17 @@ impl CleanerManager {
         ];
         let mut stopped = 0;
         for svc in heavy_services {
-            if let Ok(out) = Command::new("systemctl").args(["--user", "stop", svc]).output() {
-                if out.status.success() {
-                    stopped += 1;
-                }
+            if let Ok(out) = Command::new("systemctl")
+                .args(["--user", "stop", svc])
+                .output()
+                && out.status.success()
+            {
+                stopped += 1;
             }
         }
         if stopped > 0 {
-            tx.send(format!("[RAM] Stopped {stopped} heavy user services.")).ok();
+            tx.send(format!("[RAM] Stopped {stopped} heavy user services."))
+                .ok();
         }
         tx.send("[✓] Smart RAM Optimizer finished.".into()).ok();
     }
@@ -433,8 +501,15 @@ impl CleanerManager {
     fn run_pip_cache(tx: &Sender<String>) {
         tx.send("[*] Purging Python Pip Cache...".into()).ok();
         match Command::new("pip").args(["cache", "purge"]).output() {
-            Ok(o) if o.status.success() => tx.send("[✓] Pip cache purged successfully.".into()).ok(),
-            Ok(o) => tx.send(format!("[!] Pip output: {}", String::from_utf8_lossy(&o.stdout).trim())).ok(),
+            Ok(o) if o.status.success() => {
+                tx.send("[✓] Pip cache purged successfully.".into()).ok()
+            }
+            Ok(o) => tx
+                .send(format!(
+                    "[!] Pip output: {}",
+                    String::from_utf8_lossy(&o.stdout).trim()
+                ))
+                .ok(),
             Err(e) => tx.send(format!("[ERR] Pip purge failed: {e}")).ok(),
         };
     }
@@ -443,7 +518,12 @@ impl CleanerManager {
         tx.send("[*] Emptying user trash bin...".into()).ok();
         let home = std::env::var("HOME").unwrap_or_else(|_| "/home/zane".into());
         let _ = Command::new("bash")
-            .args(["-c", &format!("rm -rf {home}/.local/share/Trash/files/* {home}/.local/share/Trash/info/*")])
+            .args([
+                "-c",
+                &format!(
+                    "rm -rf {home}/.local/share/Trash/files/* {home}/.local/share/Trash/info/*"
+                ),
+            ])
             .status();
         tx.send("[✓] Trash bin emptied.".into()).ok();
     }
@@ -452,15 +532,22 @@ impl CleanerManager {
         tx.send("[*] Cleaning thumbnail cache...".into()).ok();
         let home = std::env::var("HOME").unwrap_or_else(|_| "/home/zane".into());
         let _ = Command::new("bash")
-            .args(["-c", &format!("rm -rf {home}/.cache/thumbnails/* {home}/.thumbnails/*")])
+            .args([
+                "-c",
+                &format!("rm -rf {home}/.cache/thumbnails/* {home}/.thumbnails/*"),
+            ])
             .status();
         tx.send("[✓] Thumbnail cache purged.".into()).ok();
     }
 
     fn run_tmp_files(tx: &Sender<String>) {
-        tx.send("[*] Cleaning /tmp files older than 24h...".into()).ok();
+        tx.send("[*] Cleaning /tmp files older than 24h...".into())
+            .ok();
         let _ = Command::new("bash")
-            .args(["-c", "find /tmp -type f -atime +1 -delete 2>/dev/null; true"])
+            .args([
+                "-c",
+                "find /tmp -type f -atime +1 -delete 2>/dev/null; true",
+            ])
             .status();
         tx.send("[✓] Old /tmp files removed.".into()).ok();
     }

@@ -1,6 +1,6 @@
 use eframe::egui;
 use std::process::Child;
-use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::mpsc::{Receiver, Sender, channel};
 
 use crate::core::idevice::IDeviceManager;
 use crate::theme::*;
@@ -43,10 +43,7 @@ impl TabIDevice {
         legend_strip(
             ui,
             "USB diagnostics, live system logs, pairing, and local TCP port forwarding for iOS devices.",
-            &[
-                ("Stream Active", GREEN_OK),
-                ("USB Standby", CYAN_INFO),
-            ],
+            &[("Stream Active", GREEN_OK), ("USB Standby", CYAN_INFO)],
         );
 
         ui.add_space(6.0);
@@ -70,13 +67,12 @@ impl TabIDevice {
             (badge_text, CYAN_INFO, CYAN_SUBTLE)
         };
 
-        ui.horizontal_top(|ui| {
-            // Left Action Sidebar using Custom Painted Action Card Buttons
-            ui.vertical(|ui| {
-                ui.set_width(355.0);
-
+        // Left action pane beside the console pane. The panes stack when 355 + 320 px cannot both
+        // fit; neither one is ever squeezed to nothing.
+        split(ui, 355.0, 320.0, |pane, index| {
+            if index == 0 {
                 cyber_card(
-                    ui,
+                    pane,
                     "📱 iOS USB DIAGNOSTIC TOOLS",
                     Some("Click a tool to inspect or connect to your device"),
                     RED_PRIMARY,
@@ -91,7 +87,11 @@ impl TabIDevice {
                             CYAN_INFO,
                             false,
                         ) {
-                            IDeviceManager::run_command(&["ideviceinfo"], "Device Info", self.tx.clone());
+                            IDeviceManager::run_command(
+                                &["ideviceinfo"],
+                                "Device Info",
+                                self.tx.clone(),
+                            );
                             set_status("Reading iOS device info via USB...".into(), CYAN_INFO);
                         }
 
@@ -118,7 +118,9 @@ impl TabIDevice {
                         ) {
                             if let Some(mut proc) = self.syslog_proc.take() {
                                 let _ = proc.kill();
-                                self.tx.send("[*] idevicesyslog streaming stopped.".into()).ok();
+                                self.tx
+                                    .send("[*] idevicesyslog streaming stopped.".into())
+                                    .ok();
                                 set_status("Stopped iOS syslog stream".into(), TEXT_MUTED);
                             } else {
                                 match IDeviceManager::start_syslog(self.tx.clone()) {
@@ -160,7 +162,10 @@ impl TabIDevice {
                                 match IDeviceManager::start_iproxy(2222, 22, self.tx.clone()) {
                                     Ok(proc) => {
                                         self.iproxy_proc = Some(proc);
-                                        set_status("USB tunnel active on 127.0.0.1:2222 -> iOS :22".into(), GREEN_OK);
+                                        set_status(
+                                            "USB tunnel active on 127.0.0.1:2222 -> iOS :22".into(),
+                                            GREEN_OK,
+                                        );
                                     }
                                     Err(e) => set_status(e, RED_BRIGHT),
                                 }
@@ -204,20 +209,15 @@ impl TabIDevice {
                         }
                     },
                 );
-            });
-
-            ui.add_space(6.0);
-
-            // Right Console Output
-            ui.vertical(|ui| {
+            } else {
                 cyber_console(
-                    ui,
+                    pane,
                     "idevice_console_scroll",
                     "iOS DEVICE // DIAGNOSTIC & CONSOLE OUTPUT",
                     &mut self.logs,
                     415.0,
                 );
-            });
+            }
         });
     }
 }

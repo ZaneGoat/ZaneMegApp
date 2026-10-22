@@ -50,18 +50,35 @@ impl HeadsetManager {
         let script = Path::new(&home).join("soundpeats_controller.py");
 
         if !script.exists() {
-            tx.send(format!("[ERR] soundpeats_controller.py not found at {}", script.display())).ok();
+            tx.send(format!(
+                "[ERR] soundpeats_controller.py not found at {}",
+                script.display()
+            ))
+            .ok();
             return;
         }
 
         let cmd_str = cmd.as_str().to_string();
         let mac_str = mac.to_string();
 
-        tx.send("------------------------------------------------------------".into()).ok();
-        tx.send(format!("[*] Sending UNVERIFIED command: {cmd_str} to {mac_str}")).ok();
-        tx.send("[!] NOTICE: The SoundPEATS Q3 Pro RFCOMM protocol requires reverse-engineering.".into()).ok();
-        tx.send("[!] Capture an Android Bluetooth HCI snoop log to extract genuine vendor payloads.".into()).ok();
-        tx.send("------------------------------------------------------------".into()).ok();
+        tx.send("------------------------------------------------------------".into())
+            .ok();
+        tx.send(format!(
+            "[*] Sending UNVERIFIED command: {cmd_str} to {mac_str}"
+        ))
+        .ok();
+        tx.send(
+            "[!] NOTICE: The SoundPEATS Q3 Pro RFCOMM protocol requires reverse-engineering."
+                .into(),
+        )
+        .ok();
+        tx.send(
+            "[!] Capture an Android Bluetooth HCI snoop log to extract genuine vendor payloads."
+                .into(),
+        )
+        .ok();
+        tx.send("------------------------------------------------------------".into())
+            .ok();
 
         thread::spawn(move || {
             let mut child = match Command::new("python3")
@@ -74,7 +91,8 @@ impl HeadsetManager {
             {
                 Ok(c) => c,
                 Err(e) => {
-                    tx.send(format!("[ERR] Failed to spawn controller: {e}")).ok();
+                    tx.send(format!("[ERR] Failed to spawn controller: {e}"))
+                        .ok();
                     return;
                 }
             };

@@ -1,5 +1,5 @@
 use eframe::egui;
-use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::mpsc::{Receiver, Sender, channel};
 
 use crate::core::controller::ControllerManager;
 use crate::theme::*;
@@ -38,10 +38,10 @@ impl TabController {
             }
         }
 
-        if let Some(pid) = self.running_pid {
-            if !ControllerManager::is_running(Some(pid)) {
-                self.running_pid = None;
-            }
+        if let Some(pid) = self.running_pid
+            && !ControllerManager::is_running(Some(pid))
+        {
+            self.running_pid = None;
         }
     }
 
@@ -79,61 +79,73 @@ impl TabController {
             RED_PRIMARY,
             Some(badge),
             |ui| {
-                ui.columns(3, |cols| {
-                    if action_card_button(
-                        &mut cols[0],
-                        "🚀",
-                        "Launch Starship Cockpit",
-                        "Starts start.sh dashboard & telemetry",
-                        Some((if is_running { "ACTIVE" } else { "LAUNCH" }, GREEN_OK)),
-                        RED_PRIMARY,
-                        !is_running,
-                    ) {
-                        if is_running {
-                            set_status("Controller Space is already running".into(), AMBER_WARN);
-                        } else {
+                grid(ui, 3, 3, 190.0, 6.0, |column, index| match index {
+                    0 => {
+                        if action_card_button(
+                            column,
+                            "🚀",
+                            "Launch Starship Cockpit",
+                            "Starts start.sh dashboard & telemetry",
+                            Some((if is_running { "ACTIVE" } else { "LAUNCH" }, GREEN_OK)),
+                            RED_PRIMARY,
+                            !is_running,
+                        ) {
+                            if is_running {
+                                set_status(
+                                    "Controller Space is already running".into(),
+                                    AMBER_WARN,
+                                );
+                            } else {
+                                match self.manager.launch(self.tx.clone()) {
+                                    Ok(pid) => {
+                                        self.running_pid = Some(pid);
+                                        set_status(
+                                            format!("Controller Space launched (PID {pid})"),
+                                            GREEN_OK,
+                                        );
+                                    }
+                                    Err(e) => set_status(e, RED_BRIGHT),
+                                }
+                            }
+                        }
+                    }
+                    1 => {
+                        if action_card_button(
+                            column,
+                            "🔄",
+                            "Restart Cockpit",
+                            "Reloads the controller service cleanly",
+                            Some(("RELOAD", CYAN_INFO)),
+                            CYAN_INFO,
+                            false,
+                        ) {
+                            if let Some(pid) = self.running_pid {
+                                ControllerManager::stop(pid, &self.tx);
+                            }
                             match self.manager.launch(self.tx.clone()) {
                                 Ok(pid) => {
                                     self.running_pid = Some(pid);
-                                    set_status(format!("Controller Space launched (PID {pid})"), GREEN_OK);
+                                    set_status(
+                                        format!("Restarted Controller Space (PID {pid})"),
+                                        GREEN_OK,
+                                    );
                                 }
                                 Err(e) => set_status(e, RED_BRIGHT),
                             }
                         }
                     }
-
-                    if action_card_button(
-                        &mut cols[1],
-                        "🔄",
-                        "Restart Cockpit",
-                        "Reloads the controller service cleanly",
-                        Some(("RELOAD", CYAN_INFO)),
-                        CYAN_INFO,
-                        false,
-                    ) {
-                        if let Some(pid) = self.running_pid {
-                            ControllerManager::stop(pid, &self.tx);
-                        }
-                        match self.manager.launch(self.tx.clone()) {
-                            Ok(pid) => {
-                                self.running_pid = Some(pid);
-                                set_status(format!("Restarted Controller Space (PID {pid})"), GREEN_OK);
-                            }
-                            Err(e) => set_status(e, RED_BRIGHT),
-                        }
-                    }
-
-                    if action_card_button(
-                        &mut cols[2],
-                        "🛑",
-                        "Stop Cockpit",
-                        "Closes the running controller service",
-                        Some(("STOP", RED_BRIGHT)),
-                        RED_BRIGHT,
-                        is_running,
-                    ) && is_running
-                    {
-                        if let Some(pid) = self.running_pid {
+                    _ => {
+                        if action_card_button(
+                            column,
+                            "🛑",
+                            "Stop Cockpit",
+                            "Closes the running controller service",
+                            Some(("STOP", RED_BRIGHT)),
+                            RED_BRIGHT,
+                            is_running,
+                        ) && is_running
+                            && let Some(pid) = self.running_pid
+                        {
                             ControllerManager::stop(pid, &self.tx);
                             self.running_pid = None;
                             set_status("Stopped Controller Space".into(), GREEN_OK);
@@ -144,42 +156,46 @@ impl TabController {
                 ui.add_space(6.0);
 
                 // Quick Subsystem Shortcuts
-                ui.columns(3, |cols| {
-                    if action_card_button(
-                        &mut cols[0],
-                        "💡",
-                        "LED & Rumble Matrix",
-                        "Open standalone RGB lightbar & vibration tuner",
-                        None,
-                        AMBER_WARN,
-                        false,
-                    ) {
-                        self.manager.launch_led(&self.tx);
-                        set_status("Opened LED & Rumble Matrix Window".into(), CYAN_INFO);
+                grid(ui, 3, 3, 190.0, 6.0, |column, index| match index {
+                    0 => {
+                        if action_card_button(
+                            column,
+                            "💡",
+                            "LED & Rumble Matrix",
+                            "Open standalone RGB lightbar & vibration tuner",
+                            None,
+                            AMBER_WARN,
+                            false,
+                        ) {
+                            self.manager.launch_led(&self.tx);
+                            set_status("Opened LED & Rumble Matrix Window".into(), CYAN_INFO);
+                        }
                     }
-
-                    if action_card_button(
-                        &mut cols[1],
-                        "📂",
-                        "Open Project Folder",
-                        "Browse Controller Space source files",
-                        None,
-                        CYAN_INFO,
-                        false,
-                    ) {
-                        self.manager.open_folder();
+                    1 => {
+                        if action_card_button(
+                            column,
+                            "📂",
+                            "Open Project Folder",
+                            "Browse Controller Space source files",
+                            None,
+                            CYAN_INFO,
+                            false,
+                        ) {
+                            self.manager.open_folder();
+                        }
                     }
-
-                    if action_card_button(
-                        &mut cols[2],
-                        "🌐",
-                        "GitHub Repository",
-                        "Open ZaneGoat/Controler-space in browser",
-                        None,
-                        GREEN_OK,
-                        false,
-                    ) {
-                        ControllerManager::open_github();
+                    _ => {
+                        if action_card_button(
+                            column,
+                            "🌐",
+                            "GitHub Repository",
+                            "Open ZaneGoat/Controler-space in browser",
+                            None,
+                            GREEN_OK,
+                            false,
+                        ) {
+                            ControllerManager::open_github();
+                        }
                     }
                 });
             },

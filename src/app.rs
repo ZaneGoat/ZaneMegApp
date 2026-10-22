@@ -2,17 +2,17 @@ use eframe::egui;
 use std::time::{Duration, Instant};
 
 use crate::theme::*;
+use crate::ui::AppTab;
 use crate::ui::tab_cleaner::TabCleaner;
 use crate::ui::tab_controller::TabController;
 use crate::ui::tab_hardware::TabHardware;
 use crate::ui::tab_headset::TabHeadset;
 use crate::ui::tab_idevice::TabIDevice;
 use crate::ui::tab_security::TabSecurity;
-use crate::ui::AppTab;
 
-/// Narrowest width the tab body is allowed to lay out in. Tabs split their cards with
-/// `ui.columns`, and `ui.columns` divides whatever width it is handed — a squeezed window
-/// must therefore never hand the body less than a readable width.
+/// Narrowest width the tab body is allowed to lay out in. `theme::grid` wraps a squeezed body
+/// down to one column instead of squeezing every card, but one column of a 120 px body is still
+/// unreadable — so the body keeps a floor rather than tracking the window down to nothing.
 const MIN_VIEWPORT_WIDTH: f32 = 320.0;
 
 pub struct ZaneMegApp {
@@ -40,7 +40,9 @@ impl ZaneMegApp {
             tab_headset: TabHeadset::new(),
             tab_security: TabSecurity::new(),
             tab_idevice: TabIDevice::new(),
-            status_message: "ZaneMegApp Visual Matrix Ready — Select any module on the left or press F1–F6".into(),
+            status_message:
+                "ZaneMegApp Visual Matrix Ready — Select any module on the left or press F1–F6"
+                    .into(),
             status_color: GREEN_OK,
             last_telemetry_tick: Instant::now(),
         };
@@ -96,8 +98,13 @@ impl eframe::App for ZaneMegApp {
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     let pulse = pulse_factor(ui.ctx());
-                    let (dot_r, _) = ui.allocate_exact_size(egui::vec2(10.0, 10.0), egui::Sense::hover());
-                    ui.painter().circle_filled(dot_r.center(), 4.5, RED_BRIGHT.gamma_multiply(pulse));
+                    let (dot_r, _) =
+                        ui.allocate_exact_size(egui::vec2(10.0, 10.0), egui::Sense::hover());
+                    ui.painter().circle_filled(
+                        dot_r.center(),
+                        4.5,
+                        RED_BRIGHT.gamma_multiply(pulse),
+                    );
 
                     ui.label(
                         egui::RichText::new("⚡ ZANE MEGAPP")
@@ -171,7 +178,7 @@ impl eframe::App for ZaneMegApp {
             status_change = Some((msg, color));
         };
 
-        let avail_h = (ui.available_height() - 36.0).max(400.0);
+        let avail_h = clamp_h(ui, ui.available_height() - 36.0);
 
         ui.horizontal_top(|ui| {
             // Left Vertical Navigation Sidebar
@@ -340,7 +347,7 @@ impl eframe::App for ZaneMegApp {
             // Like the nav pane, the scroll area inherits this horizontal layout, so the tab body
             // is given an explicit vertical layout here. It is also floored to a readable width:
             // when the window is squeezed below the nav pane the body would otherwise be handed a
-            // zero (or negative) width, and `ui.columns` divides exactly that width.
+            // sliver barely wide enough for one card.
             let viewport_width = ui.available_width().max(MIN_VIEWPORT_WIDTH);
             ui.allocate_ui_with_layout(
                 egui::vec2(viewport_width, avail_h),
@@ -350,6 +357,12 @@ impl eframe::App for ZaneMegApp {
                         .id_salt("main_viewport_scroll")
                         .max_height(avail_h)
                         .auto_shrink([false, false])
+                        // A visible bar is how the reader knows the tab continues below the
+                        // fold at 1024×640; hiding it until needed made the cut look like the
+                        // end of the page.
+                        .scroll_bar_visibility(
+                            egui::scroll_area::ScrollBarVisibility::AlwaysVisible,
+                        )
                         .show(ui, |ui| {
                             match self.current_tab {
                                 AppTab::Hardware => self.tab_hardware.ui(ui, &mut status_cb),
@@ -376,24 +389,98 @@ impl eframe::App for ZaneMegApp {
             .stroke(egui::Stroke::new(1.0, BORDER_DARK))
             .inner_margin(egui::Margin::symmetric(14, 6))
             .show(ui, |ui| {
+                let hint = "Shortcuts: [F1–F6] Switch Modules";
+                let hint_font = egui::FontId::monospace(10.0);
+                let hint_w = ui
+                    .painter()
+                    .layout_no_wrap(hint.to_owned(), hint_font, TEXT_DIM)
+                    .size()
+                    .x;
+                // Width the message keeps for itself before the shortcut hint may appear. The
+                // message is information, the hint is chrome: when both will not fit the hint
+                // goes, rather than the message being cut mid-word (the old bar ended at
+                // "Switch Modu" at 1024×640).
+                const MESSAGE_MIN: f32 = 320.0;
+
                 ui.horizontal(|ui| {
                     ui.label(egui::RichText::new("●").size(11.0).color(self.status_color));
-                    ui.label(
-                        egui::RichText::new(&self.status_message)
-                            .strong()
-                            .size(11.0)
-                            .color(TEXT_MAIN),
-                    );
 
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.label(
-                            egui::RichText::new("Shortcuts: [F1–F6] Switch Modules")
-                                .monospace()
-                                .size(10.0)
-                                .color(TEXT_DIM),
+                    let gap = ui.spacing().item_spacing.x;
+                    let room = ui.available_width();
+                    let show_hint = room - gap - MESSAGE_MIN >= hint_w;
+                    let message_w = if show_hint { room - gap - hint_w } else { room };
+
+                    ui.scope(|ui| {
+                        ui.set_max_width(message_w.max(0.0));
+                        ui.add(
+                            egui::Label::new(
+                                egui::RichText::new(&self.status_message)
+                                    .strong()
+                                    .size(11.0)
+                                    .color(TEXT_MAIN),
+                            )
+                            .wrap(),
                         );
                     });
+
+                    if show_hint {
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            ui.label(
+                                egui::RichText::new(hint)
+                                    .monospace()
+                                    .size(10.0)
+                                    .color(TEXT_DIM),
+                            );
+                        });
+                    }
                 });
             });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Drives every tab body through egui at the widths that matter: the default size, the
+    /// enforced minimum, and widths squeezed below the navigation pane. `Ui::columns` partitions
+    /// whatever width it is handed without a guard, so this is the regression test that no tab
+    /// asks for a layout the body cannot afford.
+    #[test]
+    fn every_tab_renders_without_panicking_at_any_width() {
+        for width in [1140.0_f32, 960.0, 640.0, 320.0, 120.0] {
+            let ctx = egui::Context::default();
+            let mut hardware = TabHardware::new();
+            let mut controller = TabController::new();
+            let mut cleaner = TabCleaner::new();
+            let mut headset = TabHeadset::new();
+            let mut security = TabSecurity::new();
+            let mut idevice = TabIDevice::new();
+
+            for _frame in 0..2 {
+                for tab in 0..6 {
+                    let input = egui::RawInput {
+                        screen_rect: Some(egui::Rect::from_min_size(
+                            egui::Pos2::ZERO,
+                            egui::vec2(width, 640.0),
+                        )),
+                        ..Default::default()
+                    };
+                    let output = ctx.run_ui(input, |ui| {
+                        ui.set_max_width(width);
+                        let mut set_status = |_msg: String, _color: egui::Color32| {};
+                        egui::ScrollArea::vertical().show(ui, |ui| match tab {
+                            0 => hardware.ui(ui, &mut set_status),
+                            1 => controller.ui(ui, &mut set_status),
+                            2 => cleaner.ui(ui, &mut set_status),
+                            3 => headset.ui(ui, &mut set_status),
+                            4 => security.ui(ui, &mut set_status),
+                            _ => idevice.ui(ui, &mut set_status),
+                        });
+                    });
+                    output.drop_without_applying_deltas();
+                }
+            }
+        }
     }
 }

@@ -4096,7 +4096,7 @@ dependencies = [
 
 [[package]]
 name = "zanemegapp"
-version = "0.1.0"
+version = "4.0.0"
 dependencies = [
  "eframe",
  "egui_plot",
