@@ -26,6 +26,11 @@
 
 <br/>
 
+### 🎮 Controller Space Integration & Dashboard
+![Controller Space Dashboard](assets/controller_space_window.png)
+
+<br/>
+
 ---
 
 </div>
