@@ -16,16 +16,16 @@ const PILL_PADDING: f32 = 20.0;
 /// sits in (a card header) see the true size and move it to the next line. Handing the same text
 /// to a `Frame` left the row unable to measure it, so a header that was a word short of room
 /// shrank the pill to a sliver and stacked `AUTO COOLING` one letter per line.
-pub fn status_pill(ui: &mut egui::Ui, word: &str, fg: egui::Color32, bg: egui::Color32) {
+///
+/// The response comes back so a caller can hang its own hover text on the pill (the ribbon names
+/// the source of each number that way).
+pub fn status_pill(ui: &mut egui::Ui, word: &str, fg: egui::Color32, bg: egui::Color32) -> egui::Response {
     let font = egui::FontId::proportional(PILL_TEXT);
     let painter = ui.painter().clone();
 
-    let size = egui::vec2(
-        text::measure(&painter, word, font.clone(), fg) + PILL_PADDING,
-        PILL_HEIGHT,
-    );
+    let size = egui::vec2(status_pill_width(ui, word), PILL_HEIGHT);
     let radius = PILL_HEIGHT / 2.0;
-    let (rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
+    let (rect, response) = ui.allocate_exact_size(size, egui::Sense::hover());
 
     painter.rect_filled(rect, radius, bg);
     painter.rect_stroke(
@@ -43,6 +43,15 @@ pub fn status_pill(ui: &mut egui::Ui, word: &str, fg: egui::Color32, bg: egui::C
         &label,
         fg,
     );
+    response
+}
+
+/// The width [`status_pill`] takes for `word`, so a caller can decide whether the pill fits
+/// *before* painting it — the ribbon drops a pill it cannot fit instead of painting it off the
+/// edge of the window.
+pub fn status_pill_width(ui: &egui::Ui, word: &str) -> f32 {
+    let font = egui::FontId::proportional(PILL_TEXT);
+    text::measure(ui.painter(), word, font, TEXT_MAIN) + PILL_PADDING
 }
 
 /// Renders a visual colour-key guide banner so the user immediately understands the tab.

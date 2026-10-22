@@ -14,11 +14,10 @@ pub struct SecurityManager;
 impl SecurityManager {
     /// Checks if UFW firewall (Network Isolation) is active
     pub fn is_isolation_active() -> bool {
-        if let Ok(out) = Command::new("sudo").args(["-n", "ufw", "status"]).output() {
-            let s = String::from_utf8_lossy(&out.stdout);
-            return s.contains("Status: active");
-        }
-
+        // `/etc/ufw/ufw.conf` is world-readable, so the state costs one file read. The old
+        // `sudo -n ufw status` here ran on the UI thread once a second (D19): a possible
+        // blocking prompt and an AC-08 violation. The firewall row's source is named on
+        // Mission Control (`sample_firewall` in `core::health`).
         if let Ok(content) = std::fs::read_to_string("/etc/ufw/ufw.conf") {
             return content.contains("ENABLED=yes");
         }

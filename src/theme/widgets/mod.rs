@@ -6,6 +6,7 @@ mod card;
 mod console;
 mod dial;
 mod gauge;
+mod metric;
 mod nav;
 mod status;
 mod text;
@@ -14,5 +15,6 @@ pub use card::{action_card_button, cyber_card, mode_selector_card, module_toggle
 pub use console::cyber_console;
 pub use dial::radial_dial;
 pub use gauge::{mini_core_bar, resource_gauge_card};
+pub use metric::{MetricText, belief, composite, composite_text, hover_text, metric, metric_text};
 pub use nav::nav_sidebar_item;
-pub use status::{legend_strip, status_pill};
+pub use status::{legend_strip, status_pill, status_pill_width};

@@ -117,9 +117,18 @@ pub fn nav_sidebar_item(
         title_color,
         text_width,
     );
+    // AC-37: the active entry must be distinguishable without colour alone. The lit left bar is
+    // one signal (it is drawn taller); the word is the other, and it goes on the subtitle row
+    // where it is never the part that gets cut on a 225 px sidebar ("Mission Control · current"
+    // does not fit, "current — Is my laptop well?" always shows the word).
+    let subtitle_row = if is_active {
+        format!("current — {subtitle}")
+    } else {
+        subtitle.to_string()
+    };
     let subtitle_text = text::line(
         painter,
-        subtitle,
+        &subtitle_row,
         egui::FontId::proportional(9.5),
         if is_active { RED_BRIGHT } else { TEXT_MUTED },
         text_width,

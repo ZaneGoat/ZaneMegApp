@@ -13,7 +13,9 @@ mod grid;
 mod tokens;
 mod widgets;
 
-pub use grid::{clamp_h, clamp_w, grid, split};
+pub use grid::{clamp_w, grid, split};
+#[allow(unused_imports)] // §5.6's height twin: no caller in this slice, kept for the tabs that need it.
+pub use grid::clamp_h;
 pub use tokens::*;
 pub use widgets::*;
 
@@ -65,4 +67,19 @@ pub fn apply_theme(ctx: &egui::Context) {
 pub fn pulse_factor(ctx: &egui::Context) -> f32 {
     let t = ctx.input(|i| i.time) as f32;
     0.72 + 0.28 * (t * 3.2).sin()
+}
+
+/// The colours a [`HealthWord`] paints with — the state → token mapping AC-43 and AC-14 ask for.
+///
+/// The word itself is always painted next to the colour (no colour-only state), and this
+/// function takes the *derived* word rather than a value, so a tab cannot colour a state it did
+/// not get from a measurement. `Unavailable` is deliberately neutral: unknown is never green.
+pub fn health_colors(word: crate::core::health::HealthWord) -> (egui::Color32, egui::Color32) {
+    use crate::core::health::HealthWord;
+    match word {
+        HealthWord::Ok => (GREEN_OK, GREEN_SUBTLE),
+        HealthWord::Attention => (AMBER_WARN, AMBER_SUBTLE),
+        HealthWord::Unavailable => (TEXT_MUTED, BG_CARD),
+        HealthWord::Off => (RED_BRIGHT, RED_SUBTLE),
+    }
 }
