@@ -109,6 +109,7 @@ impl<T: Copy + Into<f64>> Belief<T> {
 mod tests {
     use super::*;
     use crate::core::measured::Unit;
+    use crate::core::source::Source;
     use std::time::{Duration, UNIX_EPOCH};
 
     fn wall() -> SystemTime {

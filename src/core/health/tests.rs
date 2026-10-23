@@ -9,10 +9,6 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime};
 
-    use super::*;
-    use crate::core::measured::Unit;
-    use std::path::PathBuf;
-
     fn fixture(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("zma-health-{}-{name}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
@@ -116,7 +112,7 @@ use std::time::{Duration, Instant, SystemTime};
             assert!(!reason.is_empty(), "{label} has no sentence");
             assert!(!reason.starts_with('0'), "{label}: {reason}");
         }
-        assert_eq!(snapshot.mem.render(now, Unit::GiB, 1), None);
+        assert_eq!(snapshot.mem.observed(now), None);
         assert_eq!(snapshot.cpu_temp_c.render(now, Unit::Celsius, 0), None);
 
         let rows = snapshot.health_rows(now);
@@ -294,4 +290,3 @@ use std::time::{Duration, Instant, SystemTime};
         };
         assert_eq!(charging.words(), "79 % · charging");
     }
-}

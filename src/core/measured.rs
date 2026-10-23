@@ -83,7 +83,7 @@ struct Reading<T> {
 ///
 /// Obtainable only from [`Measured::observed`]: `_seal` is private, so a struct literal outside
 /// this module does not compile — which is what stops a `Measured`-shaped value being forged.
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Observed<'a, T> {
     pub value: &'a T,
     pub source: &'a Source,

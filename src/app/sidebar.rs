@@ -12,7 +12,10 @@ use eframe::egui;
 
 use crate::app::tabs::AppTab;
 use crate::core::health::{HealthWord, SubsystemHealth};
-use crate::theme::{BG_PANEL, BORDER_DARK, TEXT_DIM, health_colors, nav_sidebar_item};
+use crate::theme::{
+    BG_PANEL, BG_VOID, BORDER_DARK, CYAN_INFO, RED_BRIGHT, TEXT_DIM, TEXT_MAIN,
+    health_colors, nav_sidebar_item,
+};
 
 /// Paints the sidebar and returns the tab she clicked, if any. The caller owns `current`, so
 /// there is exactly one place a tab switch happens (design §6's shortcut routing).
@@ -31,13 +34,15 @@ pub fn sidebar(
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
             ui.vertical(|ui| {
+                sidebar_brand(ui);
+                ui.add_space(12.0);
                 ui.label(
-                    egui::RichText::new("MODULES")
+                    egui::RichText::new("NAVIGATION")
                         .strong()
-                        .size(9.5)
+                        .size(9.0)
                         .color(TEXT_DIM),
                 );
-                ui.add_space(4.0);
+                ui.add_space(6.0);
                 for (index, tab) in AppTab::ALL.into_iter().enumerate() {
                     if index > 0 {
                         ui.add_space(4.0);
@@ -65,6 +70,49 @@ pub fn sidebar(
             });
         });
     clicked
+}
+
+/// A compact identity panel gives the navigation rail a clear starting point and separates app
+/// identity from the destinations below it.
+fn sidebar_brand(ui: &mut egui::Ui) {
+    egui::Frame::new()
+        .fill(BG_VOID)
+        .stroke(egui::Stroke::new(1.0, BORDER_DARK))
+        .corner_radius(8)
+        .inner_margin(egui::Margin::symmetric(9, 8))
+        .show(ui, |ui| {
+            ui.horizontal(|ui| {
+                let (mark, _) = ui.allocate_exact_size(egui::vec2(32.0, 32.0), egui::Sense::hover());
+                ui.painter().rect_filled(mark, 7.0, RED_BRIGHT.gamma_multiply(0.16));
+                ui.painter().rect_stroke(
+                    mark,
+                    7.0,
+                    egui::Stroke::new(1.0, RED_BRIGHT.gamma_multiply(0.7)),
+                    egui::StrokeKind::Inside,
+                );
+                ui.painter().text(
+                    mark.center(),
+                    egui::Align2::CENTER_CENTER,
+                    "Z",
+                    egui::FontId::proportional(19.0),
+                    RED_BRIGHT,
+                );
+                ui.vertical(|ui| {
+                    ui.label(
+                        egui::RichText::new("ZANE MEGAPP")
+                            .strong()
+                            .size(11.5)
+                            .color(TEXT_MAIN),
+                    );
+                    ui.label(
+                        egui::RichText::new("LOCAL SYSTEM CONSOLE")
+                            .monospace()
+                            .size(8.0)
+                            .color(CYAN_INFO),
+                    );
+                });
+            });
+        });
 }
 
 /// The live badge for one entry: its subsystem's state word, or the alert count for Mission

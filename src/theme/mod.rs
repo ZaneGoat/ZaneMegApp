@@ -61,6 +61,15 @@ pub fn apply_theme(ctx: &egui::Context) {
     visuals.selection.stroke = egui::Stroke::new(1.0, egui::Color32::WHITE);
 
     ctx.set_visuals(visuals);
+    for theme in [egui::Theme::Dark, egui::Theme::Light] {
+        ctx.style_mut_of(theme, |style| {
+            // A little extra breathing room makes controls easier to scan and click while the
+            // responsive grids handle the resulting width changes at smaller window sizes.
+            style.spacing.item_spacing = egui::vec2(9.0, 8.0);
+            style.spacing.button_padding = egui::vec2(12.0, 7.0);
+            style.spacing.interact_size = egui::vec2(40.0, 28.0);
+        });
+    }
 }
 
 /// Smooth breathing pulse factor (`0.45..=1.0`) for active status lights and borders

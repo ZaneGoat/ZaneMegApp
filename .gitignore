@@ -1,5 +1,6 @@
 /target
 venv/
+.push-worktree/
 *.swp
 .*.swp
 *.kate-swp

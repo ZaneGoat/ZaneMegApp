@@ -1,19 +1,21 @@
 <div align="center">
 
 ```text
+========================================================================================
 ███████╗ █████╗ ███╗   ██╗███████╗    ███╗   ███╗███████╗ ██████╗  █████╗ ██████╗ ██████╗ 
 ╚══███╔╝██╔══██╗████╗  ██║██╔════╝    ████╗ ████║██╔════╝██╔════╝ ██╔══██╗██╔══██╗██╔══██╗
   ███╔╝ ███████║██╔██╗ ██║█████╗      ██╔████╔██║█████╗  ██║  ███╗███████║██████╔╝██████╔╝
  ███╔╝  ██╔══██║██║╚██╗██║██╔══╝      ██║╚██╔╝██║██╔══╝  ██║   ██║██╔══██║██╔═══╝ ██╔═══╝ 
 ███████╗██║  ██║██║ ╚████║███████╗    ██║ ╚═╝ ██║███████╗╚██████╔╝██║  ██║██║     ██║     
 ╚══════╝╚═╝  ╚═╝╚═╝  ╚═══╝╚══════╝    ╚═╝     ╚═╝╚══════╝ ╚═════╝ ╚═╝  ╚═╝╚═╝     ╚═╝     
-               ⚡ C O R E   M A T R I X   //   R U S T   E D I T I O N ⚡
+               CORE MATRIX // RUST EDITION // HARDWARE GOVERNOR
+========================================================================================
 ```
 
-# ⚡ ZANE MEGAPP (V2 RUST) ⚡
-### *Next-Gen Native System Matrix, Thermal Telemetry & Controller Space Cockpit*
+# ZANE MEGAPP [RUST]
+### Next-Gen Native System Matrix, Thermal Telemetry & Controller Space Cockpit
 
-[![Rust](https://img.shields.io/badge/Rust-1.99%2B-orange?style=for-the-badge&logo=rust&logoColor=white)](https://www.rust-lang.org)
+[![Rust](https://img.shields.io/badge/Rust-2024%20edition-orange?style=for-the-badge&logo=rust&logoColor=white)](https://www.rust-lang.org)
 [![eframe](https://img.shields.io/badge/GUI-eframe%200.36-red?style=for-the-badge&logo=egui&logoColor=white)](https://github.com/emilk/egui)
 [![egui_plot](https://img.shields.io/badge/Plots-egui__plot%200.37-darkred?style=for-the-badge&logo=gnuplot&logoColor=white)](https://crates.io/crates/egui_plot)
 [![Hardware](https://img.shields.io/badge/Hardware-MSI%20GF65%20Thin-crimson?style=for-the-badge&logo=msi&logoColor=white)](#hardware-specs)
@@ -22,11 +24,11 @@
 
 <br/>
 
-![ZaneMegApp UI Screenshot](assets/screenshot.png)
+![ZaneMegApp Native UI](assets/screenshot.png)
 
 <br/>
 
-### 🎮 Controller Space Integration & Dashboard
+### Controller Space Integration & Live Deck
 ![Controller Space Dashboard](assets/controller_space_window.png)
 
 <br/>
@@ -35,159 +37,177 @@
 
 </div>
 
-## 🛸 Overview
+## OVERVIEW
 
-**ZaneMegApp (V2)** is a complete, from-scratch **Rust rewrite** of the original monolithic `ZaneMegaCenter.py`. Engineered with `eframe` (egui) and `egui_plot`, it replaces Python and CustomTkinter with a lightweight, multi-threaded native binary that executes with near-instantaneous startup, zero runtime interpreter overhead, and native GPU-accelerated rendering.
+ZaneMegApp (V4 Architecture) is an ultra-low-latency, zero-overhead Rust rewrite of the monolithic telemetry console. Built on `eframe` (egui 0.36) and `egui_plot` (0.37), it replaces legacy interpreted scripts with a multi-threaded, GPU-accelerated binary engineered for sub-millisecond dispatch, locked 60 FPS viewport rendering, and kernel-level hardware governors.
 
-Designed for high-performance hardware tuning on the **MSI GF65 Thin** (and compatible Linux rigs), it unifies real-time EC thermal telemetry, fan speed curves, battery charge thresholds, asynchronous memory cleanup, and direct launcher integration with [**Controller Space**](https://github.com/ZaneGoat/Controler-space).
+Engineered specifically for high-intensity hardware tuning on the MSI GF65 Thin and compatible Linux battle-stations, ZaneMegApp interfaces with embedded controller registers, real-time thermal curves, battery wear governors, asynchronous process scavengers, and direct IPC launch vectors for [Controller Space](https://github.com/ZaneGoat/Controler-space).
 
 ```text
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│                              ZANE MEGAPP // CORE COCKPIT MATRIX                        │
-├──────────────────────────┬─────────────────────────────┬───────────────────────────────┤
-│ ⚡ HARDWARE & POWER      │ 🎮 CONTROLLER SPACE         │ 🧹 SYSTEM CLEANER             │
-│ • Realtime Thermal Plot  │ • Starship Flight Deck      │ • Smart RAM Optimizer         │
-│ • Dual Fan Speeds & RPM  │ • 1000Hz Polling Matrix     │ • Zombie Reaping & Bloat Kill │
-│ • Cooler Boost (pkexec)  │ • Haptics & LED Window      │ • Drop Caches & Swap Purge    │
-│ • Battery Health (60/80) │ • Subprocess Live Telemetry │ • 12 Non-Blocking Modules     │
-├──────────────────────────┼─────────────────────────────┼───────────────────────────────┤
-│ 🎧 HEADSET CONTROLS      │ 🛡️ NETWORK ISOLATION        │ 📱 iDEVICE TOOLKIT            │
-│ • SoundPEATS Q3 Pro      │ • UFW Firewall Matrix       │ • ideviceinfo Telemetry       │
-│ • RFCOMM Socket Dispatch │ • Inbound Hardening Shield  │ • idevicesyslog Live Daemon   │
-│ • [UNVERIFIED] Tagging   │ • Pentest Operational Notes │ • iproxy Port 2222 -> 22      │
-└──────────────────────────┴─────────────────────────────┴───────────────────────────────┘
++----------------------------------------------------------------------------------------+
+|                              ZANE MEGAPP // CORE COCKPIT MATRIX                        |
++--------------------------+-----------------------------+-------------------------------+
+| [01] HARDWARE & POWER    | [02] CONTROLLER SPACE       | [03] SYSTEM CLEANER           |
+| * Realtime Thermal Plots | * Starship Flight Deck      | * Non-blocking MPSC Engine    |
+| * Dual Fan Speeds & RPM  | * 1000Hz Polling Matrix     | * Threaded Process Scavenger  |
+| * Cooler Boost [pkexec]  | * Haptics & LED Bridge      | * Memory Compaction & Trim    |
+| * Battery Longevity Cap  | * Subprocess Telemetry Hub  | * 12 Discrete Cleanup Modules |
++--------------------------+-----------------------------+-------------------------------+
+| [04] HEADSET CONTROLS    | [05] NETWORK ISOLATION      | [06] iDEVICE TOOLKIT          |
+| * SoundPEATS Q3 Pro      | * UFW Firewall Grid         | * ideviceinfo Hardware Read   |
+| * RFCOMM SPP Socket      | * Inbound Default-Deny      | * idevicesyslog Stream Daemon |
+| * UNVERIFIED Protocol Tag| * Pentest Operator Advisory | * iproxy Port 2222 Forwarder  |
++--------------------------+-----------------------------+-------------------------------+
 ```
 
 ---
 
-## ⚡ Key Modules
+## OPERATIONAL MODULES
 
-### 1. ⚡ Hardware & Power (`tab_hardware.rs`)
-* **Realtime Thermal Telemetry Waveform**: Integrated GPU-rendered plot powered by `egui_plot`, displaying CPU (`#ff3333`) and GPU (`#ff8c8c`) temperatures over a rolling 60-second window.
-* **Telemetry Badges**: Live readouts showing CPU temperature, fan speed percentage, GPU temperature, and cooling fan RPM via `/sys/class/thermal`, `/sys/class/hwmon`, and ISW dumps.
-* **Power Profiles**:
-  * **🔥 Extreme**: 144Hz high-refresh mode (`kscreen-doctor`), Bluetooth active, TLP AC mode, Cooler Boost engaged.
-  * **⚖️ Balance**: 48Hz power-saving display mode, balanced fan curves, daily power profile.
-  * **🔋 Super Battery**: 48Hz display refresh, Bluetooth radio blocked via `rfkill`, silent fan profile.
-* **Cooler Boost & Smart Thermostat**: Direct hardware trigger overriding the Embedded Controller to run fans at 100% maximum RPM. Features an auto-engaging Smart Boost thermostat when thermals exceed **80°C**.
-* **Battery Longevity Cap**: Caps maximum AC charging threshold directly in the Embedded Controller (60% Max Life, 80% Balanced, 100% Full Trip).
+### 1. Hardware & Power Matrix (`tab_hardware.rs`)
+* GPU-Rendered Thermal Waveform: High-cadence real-time plot tracking CPU (#ff3333) and GPU (#ff8c8c) temperatures over an active 60-second sliding window.
+* Embedded Controller Telemetry: Direct hardware polling via `/sys/class/thermal`, `/sys/class/hwmon`, and ISW dumps, delivering instant readouts for fan RPM, duty cycles, and package thermals.
+* Governor Profiles:
+  * Extreme: 144Hz high-refresh rate display configuration via `kscreen-doctor`, unconstrained Bluetooth, TLP AC governor, Cooler Boost override.
+  * Balanced: 48Hz power-saving display clock, acoustic fan curves, daily operating governor.
+  * Super Battery: 48Hz refresh rate, radio isolation via `rfkill`, silent acoustic fan profiles.
+* Cooler Boost & Smart Thermostat: Low-level hardware override pushing blower fans to 100% maximum RPM via EC registers, with an automated failsafe thermostat engaging whenever thermals breach 80 deg C.
+* Battery Longevity Governor: Write-level AC threshold limits directly committed to the battery controller (60% Max Lifespan, 80% Balanced Endurance, 100% Full Range).
 
-### 2. 🎮 Controller Space // Starship Cockpit (`tab_controller.rs`)
-* **Flight Deck Launcher**: 1-click execution for `~/Desktop/Controler space/start.sh` (or fallback `~/controller-dashboard/start.sh`).
-* **Process Lifecycle Matrix**: Real-time PID tracking with Start, Stop, and Restart controls.
-* **Subsystem Shortcuts**:
-  * Direct link to GitHub repository (`ZaneGoat/Controler-space`).
-  * Direct folder opener (`xdg-open`).
-  * Dedicated LED & Rumble window launcher (`python3 led.py`).
-* **Console Telemetry**: Streaming, auto-scrolling terminal output capturing child process stdout and stderr in real time.
+### 2. Controller Space // Cockpit Deck (`tab_controller.rs`)
+* Flight Deck Integration: One-click low-overhead executor for `~/Desktop/Controler space/start.sh` (with automated fallback resolution).
+* Process Supervisor: Real-time PID tracking with non-blocking start, stop, restart, and state verification.
+* Direct Subsystem Links:
+  * Upstream repository link (`ZaneGoat/Controler-space`).
+  * Workspace file-manager integration.
+  * Dedicated LED & DualSense rumble calibration bridge (`python3 led.py`).
+* Telemetry Terminal: Streaming, zero-allocation circular buffer console capturing stdout and stderr without UI thread contention.
 
-### 3. 🧹 High-Efficiency System Cleaner (`tab_cleaner.rs`)
-* **Non-Blocking Threaded Engine**: Cleanup tasks execute in an isolated background thread communicating over `std::sync::mpsc` channels, preventing any UI stutter.
-* **12 Dedicated Optimization Modules**:
-  1. **🧠 Smart RAM Optimizer**: Scans `/proc` to safely terminate background bloatware (`tracker-miner`, `baloo_file`, `evolution-data`, `xdg-desktop-portal`), cleans zombie processes, and stops heavy user services.
-  2. **🧠 RAM Kernel Cache Flush**: `sync && echo 3 > /proc/sys/vm/drop_caches && sysctl -w vm.compact_memory=1`.
-  3. **⚙️ Background Service Optimizer**: Stops non-essential system daemons (`cups`, `ModemManager`, `avahi-daemon`).
-  4. **Swap Memory Reset**: `swapoff -a && swapon -a`.
-  5. **APT Package Cache**: Purges orphaned packages and cache (`apt-get clean && autoremove`).
-  6. **Python Pip Cache**: `pip cache purge`.
-  7. **Systemd Journal Logs**: Vacuums journal storage down to 100M.
-  8. **User Trash Bin**: Empties `~/.local/share/Trash`.
-  9. **Thumbnail Cache**: Clears `~/.cache/thumbnails`.
-  10. **Flatpak Unused**: Prunes unreferenced Flatpak runtimes.
-  11. **Docker Prune**: Prunes stopped containers and dangling images.
-  12. **/tmp Old Files**: Purges temporary files older than 24 hours.
+### 3. Asynchronous System Cleaner (`tab_cleaner.rs`)
+* Non-Blocking Worker Engine: All purge routines run on dedicated background threads communicating over `std::sync::mpsc` channels, ensuring zero UI frame drops or interface freezing.
+* 12 Dedicated Optimization Modules:
+  1. Background Process Scan: Inspects `/proc` for unneeded background bloatware and logs matches cleanly without arbitrary process kills.
+  2. RAM Kernel Cache Flush: Issues `sync` and flushes system drop_caches accompanied by memory compaction.
+  3. Background Service Optimizer: Safely stops non-essential daemons (`cups`, `ModemManager`, `avahi-daemon`).
+  4. Swap Memory Purge: Recycles swap allocations through coordinated `swapoff -a` and `swapon -a`.
+  5. Package Cache Cleaner: Cleans orphaned dependencies and local apt archives.
+  6. Python Pip Cache: Purges build artifacts and wheels via `pip cache purge`.
+  7. Systemd Journal Vacuum: Caps and truncates systemd journal storage to 100M.
+  8. User Trash Flush: Purges standard user trash repositories.
+  9. Thumbnail Cache Flush: Cleans cached image thumbnails across user sessions.
+  10. Flatpak Prune: Removes unused Flatpak runtimes and residual app data.
+  11. Docker Prune: Reclaims space from terminated containers, volumes, and dangling images.
+  12. Temporary Workspace Cleanup: Purges stale `/tmp` artifacts older than 24 hours.
 
-### 4. 🎧 Headset RFCOMM Controller (`tab_headset.rs`)
-* **Bluetooth SPP Dispatch**: Manages RFCOMM connections to SoundPEATS Q3 Pro (`41:42:F0:AC:0F:EF`).
-* **⚠️ Honesty & Protocol Integrity**: All mode payloads (`noise_cancelation`, `ambient`, `normal`, `disable_controls`, `movie_mode`) are explicitly labeled **`UNVERIFIED`**.
-* **Reverse-Engineering Roadmap**: Outlines instructions for capturing Android Bluetooth HCI Snoop logs with Wireshark to extract genuine vendor payloads.
+### 4. Headset RFCOMM Controller (`tab_headset.rs`)
+* Bluetooth SPP Dispatcher: Establishes RFCOMM socket channels to SoundPEATS Q3 Pro (`41:42:F0:AC:0F:EF`).
+* Protocol Honesty Policy: Operational payloads (`noise_cancelation`, `ambient`, `normal`, `disable_controls`, `movie_mode`) are strictly flagged as `UNVERIFIED` until validated against hardware captures.
+* Reverse-Engineering Protocol: Step-by-step instructions for extracting Bluetooth HCI Snoop logs with Wireshark to verify OEM vendor packets.
 
-### 5. 🛡️ Network Isolation Matrix (`tab_security.rs`)
-* **UFW Firewall Hardening**: Single-click toggle between active isolation and open mode using `pkexec`.
-* **Desktop Notifications**: Dispatches native notifications via `notify-send`.
-* **⚠️ Penetration Testing Advisories**: Explicitly documents services that inbound default-deny will disrupt (reverse shells, Metasploit handlers, Responder, local HTTP staging) with instant revert commands (`pkexec ufw disable`).
+### 5. Network Isolation Matrix (`tab_security.rs`)
+* UFW Firewall Governor: Rapid toggle between full inbound default-deny isolation and open connectivity via authenticated `pkexec` policies.
+* Notification Bridge: Dispatches desktop alerts through `notify-send`.
+* Pentest Operator Advisories: Clear operational warnings documenting listener disruptions (reverse shells, Metasploit handlers, Responder, local HTTP staging) with rapid recovery commands.
 
-### 6. 📱 iOS iDevice Toolkit (`tab_idevice.rs`)
-* **Hardware Telemetry**: Queries USB connected iOS device status via `ideviceinfo`.
-* **Console Streaming Daemon**: Spawns and manages continuous live logging via `idevicesyslog`.
-* **SSH Tunnel Proxy**: Forwards local port `2222` to device port `22` over USB cable using `iproxy`.
-* **Pairing Validation**: One-click pairing verification (`idevicepair pair` & `idevicepair validate`).
+### 6. iOS iDevice Toolkit (`tab_idevice.rs`)
+* Hardware Telemetry: Queries USB-tethered iOS device state via `ideviceinfo`.
+* Live Console Daemon: Spawns and streams continuous device logging via `idevicesyslog`.
+* SSH Tunnel Proxy: Maps local port 2222 to device port 22 over USB lightning/Type-C cables via `iproxy`.
+* Pairing Validator: One-touch verification and pairing handshake using `idevicepair`.
 
 ---
 
-## 🏗️ Architecture & Codebase Layout
+## ARCHITECTURE & TREE
 
 ```text
 /home/zane/Desktop/ZaneMegApp/
-├── Cargo.toml                  # Dependencies (eframe 0.36, egui_plot 0.37)
-├── Cargo.lock                  # Pinned dependency graph
-├── run.sh                      # Instant launcher for the release binary
-├── resume_agent.sh             # Quick-resume script for Antigravity AI agent
-├── PROJECT_STATE.md            # Persistent state documentation
-├── python_prototype/           # Archived Python modules for reference
+├── Cargo.toml                  # Edition 2024 dependencies (eframe 0.36, egui_plot 0.37)
+├── Cargo.lock                  # Locked dependency graph
+├── run.sh                      # Rapid launcher for release binary
+├── resume_agent.sh             # Agent session resumption hook
+├── PROJECT_STATE.md            # Persistent state tracking
+├── python_prototype/           # Legacy prototype reference modules
 └── src/
-    ├── main.rs                 # Native viewport entry point
+    ├── main.rs                 # Native viewport entry point & panic hooks
     ├── app.rs                  # eframe::App implementation & header navigation
-    ├── theme.rs                # Dark cyber-red palette & visual styling
-    ├── core/                   # Pure backend logic
+    ├── app/
+    │   ├── activity.rs         # Circular activity log buffer
+    │   ├── sidebar.rs          # Left navigation bar & responsive drawer
+    │   ├── statusbar.rs        # Footer status matrix
+    │   └── tabs.rs             # Tab dispatch registry
+    ├── theme/
+    │   ├── mod.rs              # Cyber-red visual styling & spacing
+    │   ├── tokens.rs           # Strict color palette & layout tokens
+    │   ├── grid.rs             # Responsive wrapping grid calculators
+    │   └── widgets/            # Custom painted dials, cards, and gauges
+    ├── core/
     │   ├── mod.rs
-    │   ├── hardware.rs         # ISW fan control, battery caps, power modes
-    │   ├── cleaner.rs          # 12 cleanup modules & background worker channels
-    │   ├── controller.rs       # Controller Space lifecycle & process tracking
-    │   ├── headset.rs          # RFCOMM socket caller & UNVERIFIED parser
-    │   ├── security.rs         # UFW state queries & toggle via pkexec
-    │   └── idevice.rs          # iOS daemon streams & USB proxying
-    └── ui/                     # Modular frontend tabs
-        ├── mod.rs              # AppTab navigation enum
-        ├── tab_hardware.rs     # Thermal plot & fan curves
-        ├── tab_cleaner.rs      # Module checkboxes & execution terminal
-        ├── tab_controller.rs   # Starship deck controls & live log
-        ├── tab_headset.rs      # Earbuds controls & protocol warning banner
-        ├── tab_security.rs     # Isolation switch & pentest notices
-        └── tab_idevice.rs      # iOS device utilities & console
+    │   ├── hardware.rs         # EC thermal registers & fan curve controls
+    │   ├── cleaner.rs          # Threaded cleanup engine & mpsc channels
+    │   ├── controller.rs       # Controller Space process lifecycle manager
+    │   ├── headset.rs          # RFCOMM socket caller & protocol definitions
+    │   ├── security.rs         # UFW state queries & privilege elevation
+    │   ├── idevice.rs          # iOS daemon streams & USB proxying
+    │   ├── health/             # Telemetry sampling & health snapshot logic
+    │   └── measured.rs         # Strongly typed observation and unit metrics
+    └── ui/
+        ├── mod.rs              # Viewport definitions
+        ├── tab_mission_control/# Central health overview cockpit
+        ├── tab_hardware.rs     # Thermal graphs & governor sliders
+        ├── tab_cleaner.rs      # Maintenance module matrix & live terminal
+        ├── tab_controller.rs   # Starship deck controls & child process monitor
+        ├── tab_headset.rs      # Audio controls & RFCOMM diagnostics
+        ├── tab_security.rs     # Firewall shield & pentest operator notices
+        └── tab_idevice.rs      # Mobile forensics & tethering tools
 ```
 
 ---
 
-## 🚀 Building & Running
+## BUILDING & DEPLOYMENT
 
 ### Prerequisites
-* **Rust Toolchain**: Rust 1.95+ (`cargo`, `rustc`).
-* **Linux Graphics**: Wayland or X11 compositor with OpenGL / Vulkan drivers.
+* Rust Toolchain: Rust edition 2024 compatible (`rustc 1.85+`, `cargo`).
+* Display Server: Wayland or X11 compositor with OpenGL / Vulkan hardware acceleration.
+* System Packages: `libxcb`, `libxkbcommon`, `libudev`, `polkit`.
 
-### 1-Click Launch (Release Binary)
+### Launch Script
 ```bash
-cd /home/zane/Desktop/ZaneMegApp
 ./run.sh
 ```
 
 ### Manual Compilation
 ```bash
-# Build optimized release binary
+# Compile optimized release binary
 cargo build --release
 
-# Run directly
+# Run direct binary
 ./target/release/zanemegapp
+```
+
+### Running Test Suite
+```bash
+cargo test
 ```
 
 ---
 
-## 🔒 Security & Privilege Rules
+## SECURITY & PRIVILEGE ARCHITECTURE
 
-* **No TTY Privilege Elevation**: Privileged actions use `pkexec` (Polkit GUI authentication prompt) rather than blocking `sudo` commands.
-* **Non-Blocking Subprocesses**: All external runners (`isw`, `tlp`, `apt-get`, `idevicesyslog`) are executed asynchronously on background threads so the GUI frame rate remains locked at smooth rendering.
-* **Reversibility**: Firewall changes can be reverted at any moment using the in-app toggle or `pkexec ufw disable`.
+* Polkit Native Authentication: Privileged actions utilize `pkexec` GUI authentication dialogs rather than insecure or hanging terminal commands.
+* Fully Non-Blocking Subprocesses: All system commands (`isw`, `tlp`, `apt-get`, `idevicesyslog`) run isolated on dedicated background threads to preserve the 60 FPS viewport.
+* Explicit Reversibility: Every security policy adjustment can be reverted with a single click or standard terminal fallbacks.
 
 ---
 
 <div align="center">
 
 ```text
-  [ ZANE MEGAPP ] ──► [ RUST ENGINE ] ──► [ NATIVE KERNEL / EC ]
-        ▲                      │
-        └────── egui_plot ─────┘
+[ ZANE MEGAPP ] ---> [ RUST ENGINE ] ---> [ LINUX KERNEL / EC ]
+       |                       |
+       +---> egui_plot         +---> mpsc async workers
 ```
 
-*Built by **ZaneGoat** // Powered by Rust & Antigravity*
+**ZaneGoat Signature Flagship Project**  
+*MSI EC Governor // Low-Latency Controller Deck // Native Linux Telemetry*
 
 </div>

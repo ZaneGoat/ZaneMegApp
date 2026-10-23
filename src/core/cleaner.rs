@@ -32,11 +32,11 @@ pub struct CleanupModule {
 pub const MODULES: &[CleanupModule] = &[
     CleanupModule {
         id: "smart_ram",
-        name: "🧠 Smart RAM Optimizer",
+        name: "🧠 Background Process Scan",
         category: "MEMORY",
-        description: "Terminates bloatware (trackers, indexers), reaps zombies, stops heavy user services",
+        description: "Reports common background processes; does not terminate processes or stop services",
         requires_root: false,
-        default_checked: true,
+        default_checked: false,
     },
     CleanupModule {
         id: "kernel_cache",
@@ -293,21 +293,22 @@ impl CleanerManager {
             }
         }
 
-        // 2. Batch all selected root modules into a single pkexec invocation
-        let mut root_script_lines: Vec<String> = Vec::new();
+        // 2. Batch all selected root modules into a single pkexec invocation.
+        // Fail fast so a success message is only printed after its command succeeds.
+        let mut root_script_lines: Vec<String> = vec!["set -e".into()];
         for mod_id in selected_ids {
             match mod_id.as_str() {
                 "kernel_cache" => {
                     root_script_lines
                         .push("echo '[*] Executing: RAM Kernel Cache Flush...'".into());
-                    root_script_lines.push("sync && echo 3 > /proc/sys/vm/drop_caches && sysctl -w vm.compact_memory=1 >/dev/null 2>&1 || true".into());
+                    root_script_lines.push("sync && echo 3 > /proc/sys/vm/drop_caches && sysctl -w vm.compact_memory=1 >/dev/null 2>&1".into());
                     root_script_lines
                         .push("echo '[✓] Kernel page cache flushed and memory compacted.'".into());
                 }
                 "service_opt" => {
                     root_script_lines
                         .push("echo '[*] Executing: Background Service Optimizer...'".into());
-                    root_script_lines.push("systemctl stop cups.service cups-browsed.service ModemManager.service avahi-daemon.service 2>/dev/null || true".into());
+                    root_script_lines.push("systemctl stop cups.service cups-browsed.service ModemManager.service avahi-daemon.service".into());
                     root_script_lines
                         .push("echo '[✓] Non-essential system services stopped.'".into());
                 }
@@ -328,19 +329,19 @@ impl CleanerManager {
                     root_script_lines
                         .push("echo '[*] Vacuuming systemd journal logs to 100M...'".into());
                     root_script_lines
-                        .push("journalctl --vacuum-size=100M >/dev/null 2>&1 || true".into());
+                        .push("journalctl --vacuum-size=100M".into());
                     root_script_lines.push("echo '[✓] Journal vacuum complete.'".into());
                 }
                 "flatpak_unused" => {
                     root_script_lines.push("echo '[*] Removing unused Flatpak runtimes...'".into());
                     root_script_lines
-                        .push("flatpak uninstall --unused -y 2>/dev/null || true".into());
+                        .push("flatpak uninstall --unused -y".into());
                     root_script_lines.push("echo '[✓] Unused Flatpak runtimes removed.'".into());
                 }
                 "docker_prune" => {
                     root_script_lines
                         .push("echo '[*] Pruning unused Docker containers and images...'".into());
-                    root_script_lines.push("docker container prune -f >/dev/null 2>&1; docker image prune -f >/dev/null 2>&1 || true".into());
+                    root_script_lines.push("docker container prune -f && docker image prune -f".into());
                     root_script_lines.push("echo '[✓] Docker resources pruned.'".into());
                 }
                 _ => {}
@@ -409,13 +410,13 @@ impl CleanerManager {
             ram_freed_mb, disk_freed_mb
         ))
         .ok();
-        tx.send("[✓] SYSTEM CLEANUP PROTOCOL COMPLETED".into()).ok();
+        tx.send("[*] Cleanup run finished; review any errors above.".into()).ok();
         tx.send("============================================================".into())
             .ok();
     }
 
     fn run_smart_ram(tx: &Sender<String>) {
-        tx.send("[*] Executing: Smart RAM Optimizer...".into()).ok();
+        tx.send("[*] Scanning common background processes (read-only)...".into()).ok();
 
         let bloat_patterns = [
             "tracker-miner",
@@ -437,65 +438,36 @@ impl CleanerManager {
             "tumblerd",
         ];
 
-        let mut killed_count = 0;
-        let my_pid = std::process::id();
+        let mut found_count = 0;
 
         if let Ok(entries) = fs::read_dir("/proc") {
             for entry in entries.flatten() {
                 if let Ok(file_name) = entry.file_name().into_string()
                     && let Ok(pid) = file_name.parse::<u32>()
                 {
-                    if pid == my_pid || pid == 1 {
-                        continue;
-                    }
                     let comm_path = entry.path().join("comm");
                     if let Ok(comm) = fs::read_to_string(comm_path) {
                         let comm = comm.trim();
                         if bloat_patterns.iter().any(|pat| comm.contains(pat)) {
-                            let _ = Command::new("kill")
-                                .args(["-15", &pid.to_string()])
-                                .status();
-                            tx.send(format!("  → Sent SIGTERM to {comm} (PID {pid})"))
+                            tx.send(format!("  → Found {comm} (PID {pid}); left running"))
                                 .ok();
-                            killed_count += 1;
+                            found_count += 1;
                         }
                     }
                 }
             }
         }
 
-        if killed_count > 0 {
+        if found_count > 0 {
             tx.send(format!(
-                "[RAM] Terminated {killed_count} background bloat processes."
+                "[RAM] Found {found_count} matching processes; no processes were stopped."
             ))
             .ok();
         } else {
-            tx.send("[RAM] No background bloat processes found running.".into())
+            tx.send("[RAM] No matching background processes found.".into())
                 .ok();
         }
-
-        let heavy_services = [
-            "tracker-miner-fs-3.service",
-            "tracker-extract-3.service",
-            "evolution-data-server.service",
-            "gvfs-daemon.service",
-            "at-spi-dbus-bus.service",
-        ];
-        let mut stopped = 0;
-        for svc in heavy_services {
-            if let Ok(out) = Command::new("systemctl")
-                .args(["--user", "stop", svc])
-                .output()
-                && out.status.success()
-            {
-                stopped += 1;
-            }
-        }
-        if stopped > 0 {
-            tx.send(format!("[RAM] Stopped {stopped} heavy user services."))
-                .ok();
-        }
-        tx.send("[✓] Smart RAM Optimizer finished.".into()).ok();
+        tx.send("[✓] Read-only process scan finished.".into()).ok();
     }
 
     fn run_pip_cache(tx: &Sender<String>) {
@@ -504,51 +476,110 @@ impl CleanerManager {
             Ok(o) if o.status.success() => {
                 tx.send("[✓] Pip cache purged successfully.".into()).ok()
             }
-            Ok(o) => tx
-                .send(format!(
-                    "[!] Pip output: {}",
-                    String::from_utf8_lossy(&o.stdout).trim()
+            Ok(o) => {
+                let details = if o.stderr.is_empty() { &o.stdout } else { &o.stderr };
+                tx.send(format!(
+                    "[ERR] Pip cache purge failed: {}",
+                    String::from_utf8_lossy(details).trim()
                 ))
-                .ok(),
+                .ok()
+            }
             Err(e) => tx.send(format!("[ERR] Pip purge failed: {e}")).ok(),
         };
     }
 
     fn run_user_trash(tx: &Sender<String>) {
         tx.send("[*] Emptying user trash bin...".into()).ok();
-        let home = std::env::var("HOME").unwrap_or_else(|_| "/home/zane".into());
-        let _ = Command::new("bash")
-            .args([
-                "-c",
-                &format!(
-                    "rm -rf {home}/.local/share/Trash/files/* {home}/.local/share/Trash/info/*"
-                ),
-            ])
-            .status();
-        tx.send("[✓] Trash bin emptied.".into()).ok();
+        let Some(home) = std::env::var_os("HOME").map(std::path::PathBuf::from) else {
+            tx.send("[ERR] HOME is not set; cannot locate user trash.".into()).ok();
+            return;
+        };
+        let paths = [
+            home.join(".local/share/Trash/files"),
+            home.join(".local/share/Trash/info"),
+        ];
+        Self::clear_directories(&paths, "Trash", tx);
     }
 
     fn run_thumbnail_cache(tx: &Sender<String>) {
         tx.send("[*] Cleaning thumbnail cache...".into()).ok();
-        let home = std::env::var("HOME").unwrap_or_else(|_| "/home/zane".into());
-        let _ = Command::new("bash")
-            .args([
-                "-c",
-                &format!("rm -rf {home}/.cache/thumbnails/* {home}/.thumbnails/*"),
-            ])
-            .status();
-        tx.send("[✓] Thumbnail cache purged.".into()).ok();
+        let Some(home) = std::env::var_os("HOME").map(std::path::PathBuf::from) else {
+            tx.send("[ERR] HOME is not set; cannot locate thumbnail cache.".into()).ok();
+            return;
+        };
+        let paths = [home.join(".cache/thumbnails"), home.join(".thumbnails")];
+        Self::clear_directories(&paths, "Thumbnail cache", tx);
     }
 
     fn run_tmp_files(tx: &Sender<String>) {
         tx.send("[*] Cleaning /tmp files older than 24h...".into())
             .ok();
-        let _ = Command::new("bash")
-            .args([
-                "-c",
-                "find /tmp -type f -atime +1 -delete 2>/dev/null; true",
-            ])
-            .status();
-        tx.send("[✓] Old /tmp files removed.".into()).ok();
+        match Command::new("find")
+            .args(["/tmp", "-type", "f", "-atime", "+1", "-delete"])
+            .output()
+        {
+            Ok(out) if out.status.success() => {
+                tx.send("[✓] Old /tmp files removed.".into()).ok()
+            }
+            Ok(out) => tx
+                .send(format!(
+                    "[ERR] /tmp cleanup failed: {}",
+                    String::from_utf8_lossy(&out.stderr).trim()
+                ))
+                .ok(),
+            Err(e) => tx.send(format!("[ERR] Could not start /tmp cleanup: {e}")).ok(),
+        };
+    }
+
+    fn clear_directories(paths: &[std::path::PathBuf], label: &str, tx: &Sender<String>) {
+        let mut failures = Vec::new();
+        for dir in paths {
+            match fs::symlink_metadata(dir) {
+                Ok(metadata) if metadata.file_type().is_symlink() => {
+                    failures.push(format!("{} is a symlink; skipped", dir.display()));
+                    continue;
+                }
+                Ok(metadata) if !metadata.is_dir() => continue,
+                Ok(_) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(error) => {
+                    failures.push(format!("{}: {error}", dir.display()));
+                    continue;
+                }
+            }
+            let entries = match fs::read_dir(dir) {
+                Ok(entries) => entries,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(error) => {
+                    failures.push(format!("{}: {error}", dir.display()));
+                    continue;
+                }
+            };
+            for entry in entries {
+                let result = entry.map_err(|e| e.to_string()).and_then(|entry| {
+                    let path = entry.path();
+                    let kind = entry.file_type().map_err(|e| e.to_string())?;
+                    let removal = if kind.is_dir() {
+                        fs::remove_dir_all(&path)
+                    } else {
+                        fs::remove_file(&path)
+                    };
+                    removal.map_err(|e| format!("{}: {e}", path.display()))
+                });
+                if let Err(error) = result {
+                    failures.push(error);
+                }
+            }
+        }
+        if failures.is_empty() {
+            tx.send(format!("[✓] {label} cleaned.")).ok();
+        } else {
+            tx.send(format!(
+                "[ERR] {label} cleanup had {} error(s): {}",
+                failures.len(),
+                failures.join("; ")
+            ))
+            .ok();
+        }
     }
 }
